@@ -7,9 +7,9 @@ from agents.run import RunResult
 from agents.items import ItemHelpers
 from agents.model_settings import ModelSettings
 
-from src.orcs.memory.system import MemorySystem
-from src.orcs.workflow.models import Workflow, Task, WorkflowStatus, TaskStatus
-from src.orcs.workflow.controller import WorkflowController
+from orcs.memory.system import MemorySystem
+from orcs.workflow.models import Workflow, Task, WorkflowStatus, TaskStatus
+from orcs.workflow.controller import WorkflowController
 
 
 class TestMilestone1Integration:

@@ -10,11 +10,11 @@ import asyncio
 import logging
 from typing import Dict, Any, Optional
 
-from src.orcs.memory.system import MemorySystem
-from src.orcs.workflow.models import Workflow
-from src.orcs.workflow.controller import WorkflowController
-from src.orcs.workflow.orchestrator import WorkflowOrchestrator
-from src.orcs.agent.infrastructure import PlannerAgent
+from orcs.memory.system import MemorySystem
+from orcs.workflow.models import Workflow
+from orcs.workflow.controller import WorkflowController
+from orcs.workflow.orchestrator import WorkflowOrchestrator
+from orcs.agent.infrastructure import PlannerAgent
 
 # Import example extension hooks
 from examples.extension_hooks.isolation_provider import UserIsolationProvider, OrganizationIsolationProvider

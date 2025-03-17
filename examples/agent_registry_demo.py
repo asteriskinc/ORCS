@@ -6,21 +6,21 @@ Demo script for the agent registry in ORCS
 import asyncio
 import logging
 import os
-import sys
 from typing import Dict, Any
+from dotenv import load_dotenv
 
-# Add src to path for imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Load environment variables from .env file
+load_dotenv()
 
-from src.orcs.memory.system import MemorySystem
-from src.orcs.workflow.controller import WorkflowController 
-from src.orcs.workflow.orchestrator import WorkflowOrchestrator
-from src.orcs.agent.infrastructure import create_planner_agent
-from src.orcs.agent.registry import global_registry, AgentRegistry
-from src.orcs.workflow.models import WorkflowStatus
+from orcs.memory.system import MemorySystem
+from orcs.workflow.controller import WorkflowController 
+from orcs.workflow.orchestrator import WorkflowOrchestrator
+from orcs.agent.infrastructure import create_planner_agent
+from orcs.agent.registry import global_registry, AgentRegistry
+from orcs.workflow.models import WorkflowStatus
 
 # Import agent factories to ensure they're registered
-import src.orcs.agent.factories
+import orcs.agent.factories
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -56,9 +56,6 @@ async def main():
         memory_system=memory,
         agent_registry=global_registry
     )
-    
-    # Set the OpenAI API key (replace with your key or use environment variable)
-    os.environ["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY", "your-api-key")
     
     # Sample query for creating a workflow
     query = "Create a tutorial on Python data analysis with pandas and matplotlib"

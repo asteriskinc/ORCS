@@ -6,12 +6,12 @@ import logging
 
 from agents.agent import Agent
 from agents.run import Runner, RunConfig
-from src.orcs.workflow.models import Workflow, Task, WorkflowStatus
-from src.orcs.memory.system import MemorySystem, AgentContext
-from src.orcs.agent.infrastructure import execute_agent_with_memory, ORCSRunHooks
-from src.orcs.agent.registry import AgentRegistry, global_registry
+from orcs.workflow.models import Workflow, Task, WorkflowStatus
+from orcs.memory.system import MemorySystem, AgentContext
+from orcs.agent.infrastructure import execute_agent_with_memory, ORCSRunHooks
+from orcs.agent.registry import AgentRegistry, global_registry
 # Import agent factories to ensure they are registered
-import src.orcs.agent.factories
+import orcs.agent.factories
 
 # Setup logger
 logger = logging.getLogger("orcs.workflow.controller")

@@ -4,8 +4,8 @@ from agents.agent import Agent
 from agents.model_settings import ModelSettings
 from agents.tool import function_tool
 
-from src.orcs.agent.registry import register_agent_type, global_registry
-from src.orcs.memory.system import AgentContext
+from orcs.agent.registry import register_agent_type, global_registry
+from orcs.memory.system import AgentContext
 
 # Set up logger
 logger = logging.getLogger("orcs.agent.factories")

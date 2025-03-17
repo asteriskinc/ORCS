@@ -216,7 +216,7 @@ class HierarchicalConfigurationProvider(ConfigurationProvider):
 # Example usage
 def example_usage():
     """Demonstrate how to use configuration providers"""
-    from src.orcs.agent.infrastructure import PlannerAgent
+    from orcs.agent.infrastructure import PlannerAgent
     
     # Create a file-based configuration provider
     file_config = FileConfigurationProvider('config.json')

@@ -169,9 +169,9 @@ class ProjectContextProvider(ContextProvider):
 # Example usage
 async def example_usage():
     """Demonstrate how to use context providers"""
-    from src.orcs.workflow.controller import WorkflowController
-    from src.orcs.memory.system import MemorySystem
-    from src.orcs.agent.infrastructure import PlannerAgent
+    from orcs.workflow.controller import WorkflowController
+    from orcs.memory.system import MemorySystem
+    from orcs.agent.infrastructure import PlannerAgent
     
     # Create a workflow controller with various context providers
     

@@ -342,9 +342,9 @@ class OrganizationResourceManager(ResourceManager):
 # Example usage
 async def example_usage():
     """Demonstrate how to use resource managers"""
-    from src.orcs.workflow.orchestrator import WorkflowOrchestrator
-    from src.orcs.memory.system import MemorySystem
-    from src.orcs.workflow.models import Workflow
+    from orcs.workflow.orchestrator import WorkflowOrchestrator
+    from orcs.memory.system import MemorySystem
+    from orcs.workflow.models import Workflow
     
     # Create a workflow orchestrator with resource management
     

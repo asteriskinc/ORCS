@@ -3,7 +3,7 @@
 Simple test script for the memory system
 """
 
-from src.orcs.memory.system import MemorySystem, AgentContext
+from orcs.memory.system import MemorySystem, AgentContext
 
 def test_memory_system():
     """Test basic memory system functionality"""

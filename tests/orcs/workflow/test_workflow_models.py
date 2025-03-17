@@ -1,5 +1,5 @@
 import pytest
-from src.orcs.workflow.models import Task, TaskStatus, Workflow, WorkflowStatus
+from orcs.workflow.models import Task, TaskStatus, Workflow, WorkflowStatus
 
 
 class TestTask:

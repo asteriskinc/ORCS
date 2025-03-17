@@ -1,5 +1,5 @@
 import pytest
-from src.orcs.memory.system import MemorySystem, AgentContext
+from orcs.memory.system import MemorySystem, AgentContext
 
 
 class TestMemorySystem:

@@ -105,7 +105,7 @@ class CompoundIsolationProvider(IsolationProvider):
 # Example usage
 def example_usage():
     """Demonstrate how to use isolation providers"""
-    from src.orcs.memory.system import MemorySystem
+    from orcs.memory.system import MemorySystem
     
     # Create memory systems with different isolation providers
     

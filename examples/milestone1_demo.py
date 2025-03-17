@@ -20,19 +20,17 @@ from pprint import pprint
 
 from openai import OpenAI
 
-from src.orcs.memory.system import MemorySystem
-from src.orcs.workflow.models import Workflow, Task, WorkflowStatus, TaskStatus
-from src.orcs.workflow.controller import WorkflowController
-from src.orcs.agent.infrastructure import create_planner_agent
+from orcs.memory.system import MemorySystem
+from orcs.workflow.models import Workflow, Task, WorkflowStatus, TaskStatus
+from orcs.workflow.controller import WorkflowController
+from orcs.agent.infrastructure import create_planner_agent
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 async def main():
-    # Check for OpenAI API key
-    if not os.environ.get("OPENAI_API_KEY"):
-        print("Error: OPENAI_API_KEY environment variable not set.")
-        print("Please set it to your OpenAI API key and try again.")
-        return
-    
     print("=== ORCS 2.0 Milestone 1 Demo ===\n")
     
     # Initialize components

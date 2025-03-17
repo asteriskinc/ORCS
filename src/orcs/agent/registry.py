@@ -2,7 +2,7 @@ from typing import Dict, Any, Callable, Optional, Union, TypeVar
 import logging
 from agents.agent import Agent
 
-from src.orcs.memory.system import AgentContext
+from orcs.memory.system import AgentContext
 
 # Set up logger
 logger = logging.getLogger("orcs.agent.registry")

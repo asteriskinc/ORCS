@@ -2,10 +2,10 @@ import pytest
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.orcs.agent.infrastructure import (
+from orcs.agent.infrastructure import (
     RunContextWrapper, Agent, EnhancedAgent, PlannerAgent
 )
-from src.orcs.memory.system import MemorySystem, AgentContext
+from orcs.memory.system import MemorySystem, AgentContext
 
 
 class TestRunContextWrapper:

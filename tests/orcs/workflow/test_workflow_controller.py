@@ -2,9 +2,9 @@ import pytest
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.orcs.workflow.controller import WorkflowController
-from src.orcs.workflow.models import Workflow, Task, WorkflowStatus
-from src.orcs.memory.system import MemorySystem, AgentContext
+from orcs.workflow.controller import WorkflowController
+from orcs.workflow.models import Workflow, Task, WorkflowStatus
+from orcs.memory.system import MemorySystem, AgentContext
 
 
 class MockAgent:

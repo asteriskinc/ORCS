@@ -6,9 +6,9 @@ import time
 
 from agents.agent import Agent
 from agents.run import Runner, RunConfig
-from src.orcs.workflow.models import Workflow, WorkflowStatus, Task, TaskStatus
-from src.orcs.agent.registry import AgentRegistry, global_registry
-from src.orcs.agent.infrastructure import ORCSRunHooks
+from orcs.workflow.models import Workflow, WorkflowStatus, Task, TaskStatus
+from orcs.agent.registry import AgentRegistry, global_registry
+from orcs.agent.infrastructure import ORCSRunHooks
 
 # Set up logger
 logger = logging.getLogger("orcs.workflow.orchestrator")

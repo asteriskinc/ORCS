@@ -3,7 +3,7 @@
 Simple test script for the workflow models
 """
 
-from src.orcs.workflow.models import Task, TaskStatus, Workflow, WorkflowStatus
+from orcs.workflow.models import Task, TaskStatus, Workflow, WorkflowStatus
 
 def test_task():
     """Test basic task functionality"""
