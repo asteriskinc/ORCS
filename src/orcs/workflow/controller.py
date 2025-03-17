@@ -8,7 +8,7 @@ from agents.agent import Agent
 from agents.run import Runner, RunConfig
 from orcs.workflow.models import Workflow, Task, WorkflowStatus
 from orcs.memory.system import MemorySystem, AgentContext
-from orcs.agent.infrastructure import execute_agent_with_memory, ORCSRunHooks
+from orcs.agent.infrastructure import ORCSRunHooks, ORCSAgentHooks
 from orcs.agent.registry import AgentRegistry, global_registry
 # Import agent factories to ensure they are registered
 import orcs.agent.factories
@@ -203,16 +203,19 @@ class WorkflowController:
         try:
             # Include external context in the query if available
             query = workflow.query
-            if "external_context" in workflow.metadata:
-                logger.debug("Including external context in query")
-                external_context = workflow.metadata["external_context"]
-                # Format external context as a string to include in the query
+            external_context = workflow.metadata.get("external_context", {})
+            if external_context:
                 context_str = "\n".join([f"{k}: {v}" for k, v in external_context.items()])
                 # TODO: Reference of user, maybe make it more general
                 query = f"{query}\n\nUser Context:\n{context_str}"
             
-            # Create run hooks for memory integration
+            # Set up hooks for memory integration
+            logger.debug("Setting up hooks for memory integration")
+            agent_hooks = ORCSAgentHooks(self.memory, workflow.id)
             run_hooks = ORCSRunHooks(self.memory, workflow.id)
+            
+            # Attach agent hooks to the planner agent
+            self.planner_agent.hooks = agent_hooks
             
             # Configure run
             run_config = RunConfig(

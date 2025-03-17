@@ -198,20 +198,137 @@ class ORCSRunHooks(RunHooks):
         self.memory = memory_system
         self.workflow_id = workflow_id
         
-    async def on_agent_run_start(self, run_id: str, agent: Agent) -> None:
-        """Captures the start of an agent run and stores info in memory"""
+    async def on_agent_start(self, context: RunContextWrapper, agent: Agent) -> None:
+        """Captures the start of an agent and stores info in memory"""
+        run_id = context.run_id
         self.memory.store(
-            key=f"agent_run:{run_id}:start",
+            key=f"run_agent_start:{run_id}:{agent.name}",
             value={"timestamp": datetime.now().isoformat(), "agent_name": agent.name},
             scope=f"workflow:{self.workflow_id}"
         )
         
-    async def on_agent_run_end(self, run_id: str, result: RunResult) -> None:
-        """Captures the end of an agent run and stores results in memory"""
+    async def on_agent_end(self, context: RunContextWrapper, agent: Agent, output) -> None:
+        """Captures the end of an agent and stores results in memory"""
+        run_id = context.run_id
         self.memory.store(
-            key=f"agent_run:{run_id}:result",
-            value={"output": result.output, "timestamp": datetime.now().isoformat()},
+            key=f"run_agent_result:{run_id}:{agent.name}",
+            value={"output": output, "timestamp": datetime.now().isoformat()},
             scope=f"workflow:{self.workflow_id}"
+        )
+        
+    async def on_tool_start(self, context: RunContextWrapper, agent: Agent, tool) -> None:
+        """Captures the start of a tool execution at workflow level"""
+        run_id = context.run_id
+        self.memory.store(
+            key=f"run_tool_start:{run_id}:{agent.name}:{tool.name}",
+            value={
+                "timestamp": datetime.now().isoformat(),
+                "agent_name": agent.name,
+                "tool_name": tool.name
+            },
+            scope=f"workflow:{self.workflow_id}"
+        )
+        
+    async def on_tool_end(self, context: RunContextWrapper, agent: Agent, tool, result: str) -> None:
+        """Captures the end of a tool execution at workflow level"""
+        run_id = context.run_id
+        self.memory.store(
+            key=f"run_tool_result:{run_id}:{agent.name}:{tool.name}",
+            value={
+                "timestamp": datetime.now().isoformat(),
+                "agent_name": agent.name,
+                "tool_name": tool.name,
+                "result": result[:1000] if len(result) > 1000 else result  # Truncate large results
+            },
+            scope=f"workflow:{self.workflow_id}"
+        )
+        
+    async def on_handoff(self, context: RunContextWrapper, from_agent: Agent, to_agent: Agent) -> None:
+        """Captures agent handoffs at workflow level"""
+        run_id = context.run_id
+        self.memory.store(
+            key=f"run_handoff:{run_id}:{from_agent.name}:{to_agent.name}",
+            value={
+                "timestamp": datetime.now().isoformat(),
+                "from_agent": from_agent.name,
+                "to_agent": to_agent.name
+            },
+            scope=f"workflow:{self.workflow_id}"
+        )
+
+class ORCSAgentHooks(AgentHooks):
+    """Hooks for agent-specific lifecycle events"""
+    
+    def __init__(self, memory_system: MemorySystem, workflow_id: str):
+        self.memory = memory_system
+        self.workflow_id = workflow_id
+        
+    async def on_start(self, context: RunContextWrapper, agent: Agent) -> None:
+        """Captures when an agent starts execution"""
+        run_id = context.run_id
+        self.memory.create_agent_context(
+            agent_id=agent.name,
+            workflow_id=self.workflow_id
+        ).store(
+            key=f"agent_start:{run_id}",
+            value={"timestamp": datetime.now().isoformat()}
+        )
+        
+    async def on_end(self, context: RunContextWrapper, agent: Agent, output) -> None:
+        """Captures when an agent completes execution"""
+        run_id = context.run_id
+        self.memory.create_agent_context(
+            agent_id=agent.name,
+            workflow_id=self.workflow_id
+        ).store(
+            key=f"agent_result:{run_id}",
+            value={
+                "timestamp": datetime.now().isoformat(),
+                "output": output
+            }
+        )
+        
+    async def on_tool_start(self, context: RunContextWrapper, agent: Agent, tool) -> None:
+        """Captures when an agent starts a tool execution"""
+        run_id = context.run_id
+        self.memory.create_agent_context(
+            agent_id=agent.name,
+            workflow_id=self.workflow_id
+        ).store(
+            key=f"agent_tool_start:{run_id}:{tool.name}",
+            value={
+                "timestamp": datetime.now().isoformat(),
+                "tool_name": tool.name
+            }
+        )
+        
+    async def on_tool_end(self, context: RunContextWrapper, agent: Agent, tool, result: str) -> None:
+        """Captures when an agent completes a tool execution"""
+        run_id = context.run_id
+        self.memory.create_agent_context(
+            agent_id=agent.name,
+            workflow_id=self.workflow_id
+        ).store(
+            key=f"agent_tool_result:{run_id}:{tool.name}",
+            value={
+                "timestamp": datetime.now().isoformat(),
+                "tool_name": tool.name,
+                "result": result[:1000] if len(result) > 1000 else result  # Truncate large results
+            }
+        )
+        
+    async def on_handoff(self, context: RunContextWrapper, agent: Agent, source: Agent) -> None:
+        """Captures when control is handed to this agent"""
+        run_id = context.run_id
+        self.memory.create_agent_context(
+            agent_id=agent.name,
+            workflow_id=self.workflow_id
+        ).store(
+            key=f"agent_handoff:{run_id}",
+            value={
+                "timestamp": datetime.now().isoformat(),
+                "source_agent": source.name
+            }
         )
 
 # Function to create a planner agent using OpenAI's Agent

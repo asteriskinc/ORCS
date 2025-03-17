@@ -10,7 +10,7 @@ from agents.model_settings import ModelSettings
 from agents.run import Runner, RunConfig
 from agents.run_context import RunContextWrapper
 from agents.lifecycle import RunHooks, AgentHooks
-from agents.tool import function_tool
+from agents.tool import Tool, function_tool
 
 from orcs.memory.system import AgentContext
 from orcs.agent.registry import AgentRegistry, global_registry
@@ -44,40 +44,108 @@ class ORCSAgentHooks(AgentHooks[AgentContext]):
         self.memory = memory_system
         self.workflow_id = workflow_id
         
-    async def on_agent_start(self, agent: Agent[AgentContext], run_id: str) -> None:
+    async def on_start(self, context: RunContextWrapper[AgentContext], agent: Agent[AgentContext]) -> None:
         """Called when an agent starts executing
         
         Args:
+            context: The run context wrapper
             agent: The agent that started
-            run_id: The ID of the run
         """
-        logger.info("Agent '%s' starting run '%s' in workflow '%s'", 
-                   agent.name, run_id, self.workflow_id)
+        logger.info("Agent '%s' starting in workflow '%s'", 
+                   agent.name, self.workflow_id)
         self.memory.create_agent_context(
             agent_id=agent.name,
             workflow_id=self.workflow_id
         ).store(
-            key=f"agent_start:{run_id}",
+            key=f"agent_start:{agent.name}",
             value={"timestamp": asyncio.get_event_loop().time()}
         )
         
-    async def on_agent_end(self, agent: Agent[AgentContext], run_id: str, output: str) -> None:
+    async def on_end(self, context: RunContextWrapper[AgentContext], agent: Agent[AgentContext], output: Any) -> None:
         """Called when an agent finishes executing
         
         Args:
+            context: The run context wrapper
             agent: The agent that finished
-            run_id: The ID of the run
             output: The output of the agent
         """
-        logger.info("Agent '%s' completed run '%s' in workflow '%s'", 
-                   agent.name, run_id, self.workflow_id)
-        logger.debug("Agent '%s' output length: %d characters", agent.name, len(output))
+        logger.info("Agent '%s' completed in workflow '%s'", 
+                   agent.name, self.workflow_id)
+        logger.debug("Agent '%s' output length: %d characters", 
+                   agent.name, len(str(output)) if output is not None else 0)
         self.memory.create_agent_context(
             agent_id=agent.name,
             workflow_id=self.workflow_id
         ).store(
-            key=f"agent_result:{run_id}",
+            key=f"agent_result:{agent.name}",
             value={"output": output, "timestamp": asyncio.get_event_loop().time()}
+        )
+        
+    async def on_tool_start(self, context: RunContextWrapper[AgentContext], agent: Agent[AgentContext], tool: Tool) -> None:
+        """Called when an agent starts a tool execution
+        
+        Args:
+            context: The run context wrapper
+            agent: The agent that is executing the tool
+            tool: The tool being executed
+        """
+        logger.info("Agent '%s' starting tool '%s' in workflow '%s'", 
+                   agent.name, tool.name, self.workflow_id)
+        self.memory.create_agent_context(
+            agent_id=agent.name,
+            workflow_id=self.workflow_id
+        ).store(
+            key=f"agent_tool_start:{agent.name}:{tool.name}",
+            value={
+                "timestamp": asyncio.get_event_loop().time(),
+                "tool_name": tool.name
+            }
+        )
+        
+    async def on_tool_end(self, context: RunContextWrapper[AgentContext], agent: Agent[AgentContext], tool: Tool, result: str) -> None:
+        """Called when an agent completes a tool execution
+        
+        Args:
+            context: The run context wrapper
+            agent: The agent that executed the tool
+            tool: The tool that was executed
+            result: The result of the tool execution
+        """
+        logger.info("Agent '%s' completed tool '%s' in workflow '%s'", 
+                   agent.name, tool.name, self.workflow_id)
+        result_preview = result[:200] + "..." if len(result) > 200 else result
+        logger.debug("Tool '%s' result: %s", tool.name, result_preview)
+        self.memory.create_agent_context(
+            agent_id=agent.name,
+            workflow_id=self.workflow_id
+        ).store(
+            key=f"agent_tool_result:{agent.name}:{tool.name}",
+            value={
+                "timestamp": asyncio.get_event_loop().time(),
+                "tool_name": tool.name,
+                "result": result[:1000] if len(result) > 1000 else result  # Truncate large results
+            }
+        )
+        
+    async def on_handoff(self, context: RunContextWrapper[AgentContext], agent: Agent[AgentContext], source: Agent[AgentContext]) -> None:
+        """Called when control is handed to this agent
+        
+        Args:
+            context: The run context wrapper
+            agent: The agent receiving control
+            source: The agent handing off control
+        """
+        logger.info("Agent '%s' receiving handoff from '%s' in workflow '%s'", 
+                   agent.name, source.name, self.workflow_id)
+        self.memory.create_agent_context(
+            agent_id=agent.name,
+            workflow_id=self.workflow_id
+        ).store(
+            key=f"agent_handoff:{agent.name}",
+            value={
+                "timestamp": asyncio.get_event_loop().time(),
+                "source_agent": source.name
+            }
         )
 
 
@@ -95,33 +163,98 @@ class ORCSRunHooks(RunHooks[AgentContext]):
         self.memory = memory_system
         self.workflow_id = workflow_id
         
-    async def on_run_start(self, run_id: str) -> None:
-        """Called when a run starts
+    async def on_agent_start(self, context: RunContextWrapper[AgentContext], agent: Agent[AgentContext]) -> None:
+        """Called when an agent starts executing within a run
         
         Args:
-            run_id: The ID of the run
+            context: The run context wrapper
+            agent: The agent that started
         """
-        logger.info("Starting run '%s' for workflow '%s'", run_id, self.workflow_id)
+        logger.info("Run: Agent '%s' starting in workflow '%s'", 
+                   agent.name, self.workflow_id)
         self.memory.store(
-            key=f"run_start:{run_id}",
+            key=f"run_agent_start:{agent.name}",
             value={"timestamp": asyncio.get_event_loop().time()},
             scope=f"workflow:{self.workflow_id}"
         )
         
-    async def on_run_end(self, run_id: str, result) -> None:
-        """Called when a run ends
+    async def on_agent_end(self, context: RunContextWrapper[AgentContext], agent: Agent[AgentContext], output: Any) -> None:
+        """Called when an agent finishes executing within a run
         
         Args:
-            run_id: The ID of the run
-            result: The result of the run
+            context: The run context wrapper
+            agent: The agent that finished
+            output: The output of the agent
         """
-        logger.info("Completed run '%s' for workflow '%s'", run_id, self.workflow_id)
-        logger.debug("Run result output length: %d characters", 
-                    len(result.final_output) if result.final_output else 0)
-        # Store the final output in memory
+        logger.info("Run: Agent '%s' completed in workflow '%s'", 
+                   agent.name, self.workflow_id)
         self.memory.store(
-            key=f"run_result:{run_id}",
-            value={"output": result.final_output, "timestamp": asyncio.get_event_loop().time()},
+            key=f"run_agent_result:{agent.name}",
+            value={"output": output, "timestamp": asyncio.get_event_loop().time()},
+            scope=f"workflow:{self.workflow_id}"
+        )
+        
+    async def on_tool_start(self, context: RunContextWrapper[AgentContext], agent: Agent[AgentContext], tool: Tool) -> None:
+        """Called when a tool starts execution within a run
+        
+        Args:
+            context: The run context wrapper
+            agent: The agent executing the tool
+            tool: The tool being executed
+        """
+        logger.info("Run: Tool '%s' starting for agent '%s' in workflow '%s'", 
+                   tool.name, agent.name, self.workflow_id)
+        self.memory.store(
+            key=f"run_tool_start:{agent.name}:{tool.name}",
+            value={
+                "timestamp": asyncio.get_event_loop().time(),
+                "agent_name": agent.name,
+                "tool_name": tool.name
+            },
+            scope=f"workflow:{self.workflow_id}"
+        )
+        
+    async def on_tool_end(self, context: RunContextWrapper[AgentContext], agent: Agent[AgentContext], tool: Tool, result: str) -> None:
+        """Called when a tool completes execution within a run
+        
+        Args:
+            context: The run context wrapper
+            agent: The agent that executed the tool
+            tool: The tool that was executed
+            result: The result from the tool
+        """
+        logger.info("Run: Tool '%s' completed for agent '%s' in workflow '%s'", 
+                   tool.name, agent.name, self.workflow_id)
+        result_preview = result[:200] + "..." if len(result) > 200 else result
+        logger.debug("Tool '%s' result: %s", tool.name, result_preview)
+        self.memory.store(
+            key=f"run_tool_result:{agent.name}:{tool.name}",
+            value={
+                "timestamp": asyncio.get_event_loop().time(),
+                "agent_name": agent.name,
+                "tool_name": tool.name,
+                "result": result[:1000] if len(result) > 1000 else result  # Truncate large results
+            },
+            scope=f"workflow:{self.workflow_id}"
+        )
+        
+    async def on_handoff(self, context: RunContextWrapper[AgentContext], from_agent: Agent[AgentContext], to_agent: Agent[AgentContext]) -> None:
+        """Called when one agent hands off to another within a run
+        
+        Args:
+            context: The run context wrapper
+            from_agent: The agent handing off control
+            to_agent: The agent receiving control
+        """
+        logger.info("Run: Handoff from agent '%s' to '%s' in workflow '%s'", 
+                   from_agent.name, to_agent.name, self.workflow_id)
+        self.memory.store(
+            key=f"run_handoff:{from_agent.name}:{to_agent.name}",
+            value={
+                "timestamp": asyncio.get_event_loop().time(),
+                "from_agent": from_agent.name,
+                "to_agent": to_agent.name
+            },
             scope=f"workflow:{self.workflow_id}"
         )
 
@@ -270,88 +403,4 @@ def create_planner_agent(model: str = "gpt-4o-mini", config_provider=None, agent
         model_settings=model_settings,
         tools=[get_memory_context],
         output_type=PlanResult
-    )
-
-
-async def execute_agent_with_memory(
-    agent: Agent[AgentContext],
-    memory_system,
-    workflow_id: str,
-    query: str,
-    agent_id: str = None
-) -> Any:
-    """Execute an agent with memory system integration
-    
-    Args:
-        agent: The agent to execute
-        memory_system: The memory system to use
-        workflow_id: The ID of the workflow
-        query: The query to execute
-        agent_id: Optional agent ID (defaults to agent.name)
-        
-    Returns:
-        The result of the agent execution
-    """
-    # Create agent context
-    agent_id = agent_id or agent.name
-    logger.info("Executing agent '%s' for workflow '%s' with query: '%s'", 
-               agent_id, workflow_id, query)
-    context = memory_system.create_agent_context(
-        agent_id=agent_id,
-        workflow_id=workflow_id
-    )
-    
-    # Create hooks for memory integration
-    logger.debug("Setting up hooks for agent execution")
-    agent_hooks = ORCSAgentHooks(memory_system, workflow_id)
-    run_hooks = ORCSRunHooks(memory_system, workflow_id)
-    
-    # Configure run
-    run_config = RunConfig(
-        workflow_name=f"ORCS Workflow: {workflow_id}",
-        model_settings=agent.model_settings,
-        tracing_disabled=False
-    )
-    
-    # Execute the agent
-    try:
-        logger.debug("Starting agent execution")
-        result = await Runner.run(
-            starting_agent=agent,
-            input=query,
-            context=context,
-            run_config=run_config,
-            hooks=run_hooks
-        )
-        
-        # Store the result in memory
-        logger.debug("Storing final result in memory")
-        context.store(
-            key=f"final_result:{agent_id}",
-            value={"output": result.final_output}
-        )
-        
-        # Try to parse JSON if agent was configured to return JSON
-        if hasattr(agent, 'output_type') and agent.output_type is not None:
-            logger.debug("Attempting to parse JSON output")
-            try:
-                json_result = json.loads(result.final_output)
-                logger.info("Successfully parsed JSON output")
-                return json_result
-            except json.JSONDecodeError:
-                logger.warning("Agent output was not valid JSON: %s", result.final_output[:100] + "..." 
-                              if len(result.final_output) > 100 else result.final_output)
-                return {"raw_output": result.final_output}
-        
-        logger.info("Agent execution completed successfully")
-        return result.final_output
-        
-    except Exception as e:
-        logger.error("Error executing agent: %s", str(e))
-        # Store the error in memory
-        context.store(
-            key=f"error:{agent_id}",
-            value={"error": str(e)}
-        )
-        # Re-raise the exception
-        raise 
+    ) 

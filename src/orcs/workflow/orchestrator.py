@@ -8,7 +8,7 @@ from agents.agent import Agent
 from agents.run import Runner, RunConfig
 from orcs.workflow.models import Workflow, WorkflowStatus, Task, TaskStatus
 from orcs.agent.registry import AgentRegistry, global_registry
-from orcs.agent.infrastructure import ORCSRunHooks
+from orcs.agent.infrastructure import ORCSRunHooks, ORCSAgentHooks
 
 # Set up logger
 logger = logging.getLogger("orcs.workflow.orchestrator")
@@ -224,8 +224,13 @@ class WorkflowOrchestrator:
                 workflow_id=workflow.id
             )
             
-            # Set up run hooks for memory integration
+            # Set up hooks for memory integration
+            logger.debug("Setting up hooks for memory integration")
+            agent_hooks = ORCSAgentHooks(self.memory, workflow.id)
             run_hooks = ORCSRunHooks(self.memory, workflow.id)
+            
+            # Attach agent hooks to the agent
+            agent.hooks = agent_hooks
             
             # Execute the agent using the AgentSDK Runner
             logger.debug("Executing agent '%s' with AgentSDK Runner", task.agent_id)
