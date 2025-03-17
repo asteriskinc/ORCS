@@ -6,6 +6,7 @@ Demo script for the agent registry in ORCS
 import asyncio
 import logging
 import os
+import json
 from typing import Dict, Any
 from dotenv import load_dotenv
 
@@ -119,6 +120,36 @@ async def main():
                     if len(result_str) > 100:
                         result_str = result_str[:100] + "..."
                     logger.info(f"  {task.title}: {result_str}")
+                    
+                # Save full results to a file
+                output_dir = "output"
+                os.makedirs(output_dir, exist_ok=True)
+                
+                # Create a clean filename from the workflow title
+                workflow_filename = workflow.title.lower().replace(" ", "_")[:50]
+                output_file = os.path.join(output_dir, f"{workflow_filename}_results.txt")
+                
+                with open(output_file, "w", encoding="utf-8") as f:
+                    f.write(f"Workflow: {workflow.title}\n")
+                    f.write(f"Query: {query}\n")
+                    f.write("-" * 80 + "\n\n")
+                    
+                    # Write each task result
+                    for task_id, result in results["results"].items():
+                        task = workflow.tasks[task_id]
+                        f.write(f"Task: {task.title}\n")
+                        f.write(f"Agent: {task.agent_id}\n")
+                        f.write("-" * 40 + "\n")
+                        f.write(f"{result}\n\n")
+                    
+                    # Write full compiled result if available
+                    if "final_result" in results:
+                        f.write("=" * 80 + "\n")
+                        f.write("FINAL RESULT\n")
+                        f.write("=" * 80 + "\n")
+                        f.write(f"{results['final_result']}\n")
+                
+                logger.info(f"Full results saved to {output_file}")
             else:
                 logger.error(f"Workflow failed: {results['metadata']['error']}")
         else:

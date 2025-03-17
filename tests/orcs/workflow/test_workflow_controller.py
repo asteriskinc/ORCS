@@ -120,6 +120,47 @@ class TestWorkflowController:
         assert non_existent is None
         
     @pytest.mark.asyncio
+    async def test_cycle_detection(self):
+        """Test detection of cyclic dependencies in workflows"""
+        # Create a custom planner that returns tasks with cyclic dependencies
+        cyclic_tasks = {
+            "tasks": [
+                {
+                    "title": "Task 1",
+                    "description": "Description for task 1",
+                    "agent_id": "research_agent",
+                    "dependencies": [2]  # Depends on Task 3
+                },
+                {
+                    "title": "Task 2",
+                    "description": "Description for task 2",
+                    "agent_id": "writing_agent",
+                    "dependencies": [0]  # Depends on Task 1
+                },
+                {
+                    "title": "Task 3",
+                    "description": "Description for task 3",
+                    "agent_id": "coding_agent",
+                    "dependencies": [1]  # Depends on Task 2, creating a cycle
+                }
+            ]
+        }
+        
+        # Create a controller with the cyclic tasks
+        planner_agent = MockAgent(cyclic_tasks)
+        controller = WorkflowController(
+            planner_agent=planner_agent,
+            memory_system=self.memory
+        )
+        
+        # Creating a workflow should fail due to cyclic dependencies
+        with pytest.raises(ValueError) as excinfo:
+            await controller.create_workflow("Test query with cyclic dependencies")
+        
+        # Verify the error message mentions cyclic dependencies
+        assert "cycle" in str(excinfo.value).lower()
+        
+    @pytest.mark.asyncio
     async def test_list_workflows(self):
         """Test listing workflows"""
         # Create a few workflows

@@ -1,5 +1,5 @@
 import uuid
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple, List
 from datetime import datetime
 import json
 import logging
@@ -237,11 +237,11 @@ class WorkflowController:
             result_content = result.final_output
             logger.debug(f"Received result content (length: {len(str(result_content))})")
             
-            # Parse the JSON result
+            # Work directly with PlanResult object
             try:
-                logger.debug("Parsing JSON result")
-                parsed_result = json.loads(result_content)
-                tasks_data = parsed_result.get("tasks", [])
+                logger.debug("Processing PlanResult object")
+                # Get tasks directly from the PlanResult object
+                tasks_data = result_content.tasks
                 logger.info(f"Retrieved {len(tasks_data)} tasks from planner")
                 
                 # Process the plan result
@@ -250,11 +250,12 @@ class WorkflowController:
                 # First pass: Create all tasks
                 logger.debug("Creating tasks")
                 for i, task_data in enumerate(tasks_data):
+                    # Directly access Pydantic model attributes
                     task = Task(
                         id=str(uuid.uuid4()),
-                        title=task_data["title"],
-                        description=task_data["description"],
-                        agent_id=task_data["agent_id"]
+                        title=task_data.title,
+                        description=task_data.description,
+                        agent_id=task_data.agent_id
                     )
                     workflow.add_task(task)
                     task_id_map[i] = task.id
@@ -263,27 +264,34 @@ class WorkflowController:
                 # Second pass: Set up dependencies
                 logger.debug("Setting up task dependencies")
                 for i, task_data in enumerate(tasks_data):
-                    if "dependencies" in task_data and task_data["dependencies"]:
-                        task_id = task_id_map[i]
-                        task = workflow.get_task(task_id)
-                        
-                        # Convert dependency indices to task IDs
-                        for dep_idx in task_data["dependencies"]:
+                    task_id = task_id_map[i]
+                    task = workflow.get_task(task_id)
+                    
+                    # Directly access dependencies from Pydantic model
+                    if task_data.dependencies:
+                        for dep_idx in task_data.dependencies:
                             if isinstance(dep_idx, int) and 0 <= dep_idx < len(tasks_data):
                                 task.dependencies.append(task_id_map[dep_idx])
                                 logger.debug(f"Added dependency {task_id_map[dep_idx]} to task {task_id}")
+                
+                # Validate the dependency graph for cycles
+                has_cycles, cycle_path = self._detect_dependency_cycles(workflow)
+                if has_cycles:
+                    logger.error(f"Workflow {workflow.id} contains cyclic dependencies: {cycle_path}")
+                    workflow.status = WorkflowStatus.FAILED
+                    workflow.metadata["planning_error"] = f"Cyclic dependency detected: {cycle_path}"
+                    raise ValueError(f"Dependency cycle detected in workflow: {cycle_path}")
                 
                 # Update workflow status
                 workflow.status = WorkflowStatus.READY
                 logger.info(f"Workflow {workflow.id} planning completed successfully")
                 
-            except json.JSONDecodeError as e:
-                # Handle JSON parsing errors
-                logger.error(f"Failed to parse JSON result: {str(e)}")
+            except AttributeError as e:
+                # Handle missing attribute errors (e.g., if the model structure doesn't match)
+                logger.error(f"Invalid structure in agent output: {str(e)}")
                 workflow.status = WorkflowStatus.FAILED
-                workflow.metadata["planning_error"] = f"Invalid JSON result: {str(e)}"
-                workflow.metadata["raw_result"] = result_content
-                raise ValueError(f"Planner agent returned invalid JSON: {str(e)}")
+                workflow.metadata["planning_error"] = f"Invalid output structure: {str(e)}"
+                raise ValueError(f"Agent output has invalid structure: {str(e)}")
                 
         except Exception as e:
             # If planning fails, mark the workflow as failed
@@ -292,3 +300,57 @@ class WorkflowController:
             workflow.metadata["planning_error"] = str(e)
             # Re-raise the exception
             raise
+    
+    def _detect_dependency_cycles(self, workflow: Workflow) -> Tuple[bool, Optional[List[str]]]:
+        """Check for cycles in the workflow dependency graph
+        
+        Args:
+            workflow: The workflow to check for cycles
+            
+        Returns:
+            Tuple of (has_cycles, cycle_path) where cycle_path is a list of task IDs in the cycle or None
+        """
+        # Track visited and in-progress nodes for DFS
+        visited = set()
+        in_progress = set()
+        back_edges = []
+        
+        def dfs(task_id):
+            if task_id in in_progress:
+                # Found a cycle
+                return True, task_id
+            
+            if task_id in visited:
+                # Already processed this node, no cycle found
+                return False, None
+            
+            # Mark as in-progress
+            in_progress.add(task_id)
+            
+            # Check dependencies
+            task = workflow.get_task(task_id)
+            if task:
+                for dep_id in task.dependencies:
+                    has_cycle, cycle_start = dfs(dep_id)
+                    if has_cycle:
+                        # Add this task to back edges and return
+                        back_edges.append(task_id)
+                        return True, cycle_start
+            
+            # Mark as visited and remove from in-progress
+            visited.add(task_id)
+            in_progress.remove(task_id)
+            return False, None
+            
+        # Check each task for cycles
+        for task_id in workflow.tasks:
+            has_cycle, cycle_start = dfs(task_id)
+            if has_cycle:
+                # Reconstruct the cycle path
+                cycle_path = back_edges + [cycle_start]
+                # Reorder to start with the cycle_start node
+                start_idx = cycle_path.index(cycle_start)
+                cycle_path = cycle_path[start_idx:] + cycle_path[:start_idx] + [cycle_start]
+                return True, cycle_path
+                
+        return False, None

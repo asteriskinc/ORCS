@@ -24,7 +24,7 @@ class TaskData(BaseModel):
     title: str
     description: str
     agent_id: str
-    dependencies: List[int] = []
+    dependencies: List[int]
 
 class PlanResult(BaseModel):
     tasks: List[TaskData]
@@ -187,11 +187,16 @@ def create_planner_agent(model: str = "gpt-4o-mini", config_provider=None, agent
     3. The type of agent that should handle it
     4. Any dependencies (other tasks that must be completed first)
     
+    IMPORTANT: Always ensure there are NO CYCLES in the dependency graph. If task A depends on task B, 
+    and task B depends on task C, then task C must NOT depend on task A (directly or indirectly).
+    Dependency cycles will cause deadlocks in execution. Always construct dependencies as a 
+    directed acyclic graph (DAG).
+    
     Return your plan as a JSON object with a "tasks" array containing task objects with these fields:
-    - title: A short descriptive title
-    - description: Detailed instructions for the task
-    - agent_id: The type of agent to use (must be one of the available agent types)
-    - dependencies: Array of task indices that must be completed first (0-based)
+    - title: A short descriptive title (required)
+    - description: Detailed instructions for the task (required)
+    - agent_id: The type of agent to use (required, must be one of the available agent types)
+    - dependencies: Array of task indices that must be completed first, 0-based indices (required, use empty array if no dependencies)
     
     Available agent types:
     {agent_types_description}
@@ -263,7 +268,8 @@ def create_planner_agent(model: str = "gpt-4o-mini", config_provider=None, agent
         instructions=planner_instructions,
         model=model,
         model_settings=model_settings,
-        tools=[get_memory_context]
+        tools=[get_memory_context],
+        output_type=PlanResult
     )
 
 

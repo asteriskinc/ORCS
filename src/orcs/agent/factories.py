@@ -1,8 +1,10 @@
 import logging
 from typing import Dict, Any, Optional, List
+from pydantic import BaseModel
 from agents.agent import Agent
 from agents.model_settings import ModelSettings
 from agents.tool import function_tool
+from agents.run_context import RunContextWrapper
 
 from orcs.agent.registry import register_agent_type, global_registry
 from orcs.memory.system import AgentContext
@@ -12,6 +14,31 @@ logger = logging.getLogger("orcs.agent.factories")
 
 # Default model to use for all agents
 DEFAULT_MODEL = "gpt-4o-mini"
+
+# Define structured output types for each agent
+class ResearchOutput(BaseModel):
+    findings: List[str]
+    summary: str
+    sources: List[str]
+    confidence_level: str
+
+class WritingOutput(BaseModel):
+    content: str
+    title: str
+    summary: str
+    sections: List[str]
+
+class CodeOutput(BaseModel):
+    code: str
+    language: str
+    explanation: str
+    test_cases: List[str]
+
+class DataOutput(BaseModel):
+    analysis: str
+    insights: List[str]
+    data_summary: str
+    visualization_suggestions: List[str]
 
 
 @register_agent_type(global_registry)
@@ -48,46 +75,56 @@ def research_agent(model: str = DEFAULT_MODEL,
     You are a research agent specialized in gathering, analyzing, and synthesizing information.
     
     Your capabilities include:
-    1. Finding and evaluating sources of information
-    2. Summarizing complex topics into clear, concise explanations
-    3. Identifying patterns and connections between different pieces of information
-    4. Providing balanced perspectives on controversial topics
-    5. Citing sources and references properly
+    1. Searching for relevant information
+    2. Analyzing data and identifying patterns
+    3. Summarizing complex topics
+    4. Providing well-organized findings
     
-    Always strive to be thorough, accurate, and objective in your research.
-    Consider multiple sources and viewpoints before drawing conclusions.
+    Structure your output with:
+    - findings: Array of key findings (required)
+    - summary: A concise summary (required)
+    - sources: Array of sources for your information (required, provide an empty array if none)
+    - confidence_level: Your level of confidence in the findings (required, use "low", "medium", or "high")
     """
     
-    # Define research-specific tools
     @function_tool
-    def get_research_context(context, workflow_id: str, query: str) -> str:
-        """Get relevant research context for a query
+    def get_research_context(context: RunContextWrapper[AgentContext], workflow_id: str, query: str) -> str:
+        """Retrieve research context from memory
         
         Args:
-            context: The run context wrapper
-            workflow_id: The ID of the workflow
+            context: The agent context
+            workflow_id: The workflow ID
             query: The research query
             
         Returns:
-            A formatted string with research context
+            Context information related to the research query
         """
-        logger.debug("Getting research context for query: %s", query)
-        if not memory_system or not workflow_id:
-            return "No research context available."
-            
-        agent_context = context.context
-        
-        # Get relevant context from memory
-        # In a real implementation, this would gather relevant data
-        return f"Research context for query: {query}"
+        logger.debug("Getting research context for workflow '%s' with query '%s'", workflow_id, query)
+        if memory_system and workflow_id:
+            try:
+                # Get relevant memory items for this research query
+                memory_data = memory_system.search(
+                    workflow_id=workflow_id,
+                    query=query,
+                    limit=5
+                )
+                if memory_data:
+                    return f"Research context:\n{memory_data}"
+                else:
+                    return "No existing research context found."
+            except Exception as e:
+                logger.error("Error retrieving research context: %s", str(e))
+                return f"Error retrieving context: {str(e)}"
+        return "No memory system available for research context."
     
     # Create and return the agent
     return Agent[AgentContext](
-        name="research",
+        name="research_agent",
         instructions=instructions,
         model=model,
         model_settings=model_settings,
-        tools=[get_research_context]
+        tools=[get_research_context],
+        output_type=ResearchOutput
     )
 
 
@@ -96,7 +133,7 @@ def writing_agent(model: str = DEFAULT_MODEL,
                 memory_system=None, 
                 workflow_id: Optional[str] = None,
                 config_provider=None) -> Agent[AgentContext]:
-    """Create a writing agent specialized in content creation and documentation.
+    """Create a writing agent specialized in content creation.
     
     Args:
         model: The model to use
@@ -122,49 +159,59 @@ def writing_agent(model: str = DEFAULT_MODEL,
             logger.debug("Using custom temperature: %f", model_settings.temperature)
     
     instructions = """
-    You are a writing agent specialized in creating high-quality content.
+    You are a writing agent specialized in creating clear, engaging, and well-structured content.
     
     Your capabilities include:
-    1. Creating engaging and clear content in various formats and styles
-    2. Adapting tone and complexity to different audiences
-    3. Organizing information logically and coherently
-    4. Editing and improving existing content
-    5. Following style guides and formatting requirements
+    1. Creating various types of content (articles, reports, documentation, etc.)
+    2. Adapting tone and style to different audiences
+    3. Organizing information logically
+    4. Generating engaging and appropriate titles
     
-    Strive for clarity, conciseness, and impact in your writing.
-    Always consider the purpose of the content and the needs of the audience.
+    Structure your output with:
+    - content: The well-organized main content (required)
+    - title: A compelling title (required)
+    - summary: A brief summary of the content (required, can be empty string if not applicable)
+    - sections: Array of section headings (required, provide an empty array if not applicable)
     """
     
-    # Define writing-specific tools
     @function_tool
-    def get_writing_materials(context, workflow_id: str, content_type: str) -> str:
-        """Get writing materials and resources for a specific content type
+    def get_writing_materials(context: RunContextWrapper[AgentContext], workflow_id: str, content_type: str) -> str:
+        """Retrieve writing materials from memory
         
         Args:
-            context: The run context wrapper
-            workflow_id: The ID of the workflow
-            content_type: The type of content (article, documentation, etc.)
+            context: The agent context
+            workflow_id: The workflow ID
+            content_type: The type of content being written
             
         Returns:
-            A formatted string with writing resources
+            Materials related to the writing task
         """
-        logger.debug("Getting writing materials for content type: %s", content_type)
-        if not memory_system or not workflow_id:
-            return "No writing materials available."
-            
-        agent_context = context.context
-        
-        # Get relevant materials from memory
-        # In a real implementation, this would gather relevant templates, guidelines, etc.
-        return f"Writing materials for content type: {content_type}"
+        logger.debug("Getting writing materials for workflow '%s' with type '%s'", workflow_id, content_type)
+        if memory_system and workflow_id:
+            try:
+                # Get relevant memory items for this writing task
+                memory_data = memory_system.search(
+                    workflow_id=workflow_id,
+                    query=f"writing materials for {content_type}",
+                    limit=5
+                )
+                if memory_data:
+                    return f"Writing materials:\n{memory_data}"
+                else:
+                    return "No existing writing materials found."
+            except Exception as e:
+                logger.error("Error retrieving writing materials: %s", str(e))
+                return f"Error retrieving materials: {str(e)}"
+        return "No memory system available for writing materials."
     
     # Create and return the agent
     return Agent[AgentContext](
-        name="writer",
+        name="writing_agent",
         instructions=instructions,
         model=model,
         model_settings=model_settings,
-        tools=[get_writing_materials]
+        tools=[get_writing_materials],
+        output_type=WritingOutput
     )
 
 
@@ -173,7 +220,7 @@ def coding_agent(model: str = DEFAULT_MODEL,
                 memory_system=None, 
                 workflow_id: Optional[str] = None,
                 config_provider=None) -> Agent[AgentContext]:
-    """Create a coding agent specialized in software development and code generation.
+    """Create a coding agent specialized in writing and reviewing code.
     
     Args:
         model: The model to use
@@ -187,7 +234,7 @@ def coding_agent(model: str = DEFAULT_MODEL,
     logger.info("Creating coding agent with model '%s'", model)
     
     # Apply configuration if provider exists
-    model_settings = ModelSettings(temperature=0.1)
+    model_settings = ModelSettings(temperature=0.3)
     
     if config_provider:
         config = config_provider.get_configuration('agent.coding')
@@ -199,50 +246,60 @@ def coding_agent(model: str = DEFAULT_MODEL,
             logger.debug("Using custom temperature: %f", model_settings.temperature)
     
     instructions = """
-    You are a coding agent specialized in software development and code generation.
+    You are a coding agent specialized in writing clean, efficient, and well-documented code.
     
     Your capabilities include:
-    1. Writing clean, efficient, and well-documented code
-    2. Debugging and fixing issues in existing code
-    3. Explaining complex technical concepts clearly
-    4. Following best practices and coding standards
-    5. Designing software architecture and data structures
+    1. Writing code in various programming languages
+    2. Explaining code functionality
+    3. Troubleshooting and debugging
+    4. Suggesting test cases
     
-    Always prioritize code quality, readability, and maintainability.
-    Consider security, performance, and edge cases in your solutions.
+    Structure your output with:
+    - code: The complete code implementation (required)
+    - language: The programming language used (required)
+    - explanation: An explanation of how the code works (required)
+    - test_cases: Array of suggested test cases (required, provide an empty array if not applicable)
     """
     
-    # Define coding-specific tools
     @function_tool
-    def get_code_context(context, workflow_id: str, language: str, task: str) -> str:
-        """Get relevant code context for a programming task
+    def get_code_context(context: RunContextWrapper[AgentContext], workflow_id: str, language: str, task: str) -> str:
+        """Retrieve code context from memory
         
         Args:
-            context: The run context wrapper
-            workflow_id: The ID of the workflow
+            context: The agent context
+            workflow_id: The workflow ID
             language: The programming language
             task: The coding task description
             
         Returns:
-            A formatted string with code context
+            Context information related to the coding task
         """
-        logger.debug("Getting code context for language '%s' and task: %s", language, task)
-        if not memory_system or not workflow_id:
-            return "No code context available."
-            
-        agent_context = context.context
-        
-        # Get relevant context from memory
-        # In a real implementation, this would gather code snippets, documentation, etc.
-        return f"Code context for {language} task: {task}"
+        logger.debug("Getting code context for workflow '%s' with language '%s'", workflow_id, language)
+        if memory_system and workflow_id:
+            try:
+                # Get relevant memory items for this coding task
+                memory_data = memory_system.search(
+                    workflow_id=workflow_id,
+                    query=f"{language} code for {task}",
+                    limit=5
+                )
+                if memory_data:
+                    return f"Code context:\n{memory_data}"
+                else:
+                    return f"No existing code context found for {language}."
+            except Exception as e:
+                logger.error("Error retrieving code context: %s", str(e))
+                return f"Error retrieving context: {str(e)}"
+        return "No memory system available for code context."
     
     # Create and return the agent
     return Agent[AgentContext](
-        name="coder",
+        name="coding_agent",
         instructions=instructions,
         model=model,
         model_settings=model_settings,
-        tools=[get_code_context]
+        tools=[get_code_context],
+        output_type=CodeOutput
     )
 
 
@@ -277,47 +334,57 @@ def data_agent(model: str = DEFAULT_MODEL,
             logger.debug("Using custom temperature: %f", model_settings.temperature)
     
     instructions = """
-    You are a data agent specialized in data analysis and processing.
+    You are a data agent specialized in analyzing and extracting insights from data.
     
     Your capabilities include:
-    1. Interpreting and analyzing data sets
-    2. Identifying patterns and insights from data
-    3. Creating and explaining data visualizations
-    4. Processing and cleaning data
-    5. Designing data collection methodologies
+    1. Analyzing data patterns and trends
+    2. Drawing insights from complex datasets
+    3. Suggesting visualization approaches
+    4. Providing clear data summaries
     
-    Always strive for accuracy, clarity, and objectivity in your data work.
-    Consider statistical significance, data quality, and appropriate methodologies.
+    Structure your output with:
+    - analysis: A comprehensive analysis of the data (required)
+    - insights: Array of key insights from the data (required)
+    - data_summary: A concise summary of the data (required)
+    - visualization_suggestions: Array of visualization suggestions (required, provide an empty array if not applicable)
     """
     
-    # Define data-specific tools
     @function_tool
-    def get_data_context(context, workflow_id: str, data_type: str) -> str:
-        """Get relevant data context for analysis
+    def get_data_context(context: RunContextWrapper[AgentContext], workflow_id: str, data_type: str) -> str:
+        """Retrieve data context from memory
         
         Args:
-            context: The run context wrapper
-            workflow_id: The ID of the workflow
-            data_type: The type of data to analyze
+            context: The agent context
+            workflow_id: The workflow ID
+            data_type: The type of data being analyzed
             
         Returns:
-            A formatted string with data context
+            Context information related to the data task
         """
-        logger.debug("Getting data context for data type: %s", data_type)
-        if not memory_system or not workflow_id:
-            return "No data context available."
-            
-        agent_context = context.context
-        
-        # Get relevant context from memory
-        # In a real implementation, this would gather data descriptions, schemas, etc.
-        return f"Data context for {data_type}"
+        logger.debug("Getting data context for workflow '%s' with type '%s'", workflow_id, data_type)
+        if memory_system and workflow_id:
+            try:
+                # Get relevant memory items for this data task
+                memory_data = memory_system.search(
+                    workflow_id=workflow_id,
+                    query=f"data analysis for {data_type}",
+                    limit=5
+                )
+                if memory_data:
+                    return f"Data context:\n{memory_data}"
+                else:
+                    return f"No existing data context found for {data_type}."
+            except Exception as e:
+                logger.error("Error retrieving data context: %s", str(e))
+                return f"Error retrieving context: {str(e)}"
+        return "No memory system available for data context."
     
     # Create and return the agent
     return Agent[AgentContext](
-        name="data_analyst",
+        name="data_agent",
         instructions=instructions,
         model=model,
         model_settings=model_settings,
-        tools=[get_data_context]
+        tools=[get_data_context],
+        output_type=DataOutput
     ) 
