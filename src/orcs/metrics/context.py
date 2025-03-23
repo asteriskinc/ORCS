@@ -364,25 +364,3 @@ class AgentMetricsContext(MetricsContext):
         )
         
         return duration
-
-
-# Default metrics context instance for simple usage
-default_metrics_context = BasicMetricsContext()
-
-def get_default_metrics_context() -> MetricsContext:
-    """Get the default metrics context
-    
-    Returns:
-        The default metrics context instance
-    """
-    return default_metrics_context
-
-def set_default_metrics_context(context: MetricsContext) -> None:
-    """Set the default metrics context
-    
-    Args:
-        context: The metrics context to use as default
-    """
-    global default_metrics_context
-    default_metrics_context = context
-    logger.info("Default metrics context set to %s", context.__class__.__name__)

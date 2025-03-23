@@ -9,7 +9,7 @@ from agents.run_context import RunContextWrapper
 from agents.lifecycle import RunHooks, AgentHooks
 from agents import get_current_trace
 
-from orcs.metrics.context import MetricsContext, get_default_metrics_context
+from orcs.metrics.context import MetricsContext
 
 # Set up logger
 logger = logging.getLogger("orcs.metrics.hooks")
@@ -21,7 +21,7 @@ class MetricsAgentHooks(AgentHooks):
     These hooks record events and metrics for agent lifecycle events.
     """
     
-    def __init__(self, metrics_context: Optional[MetricsContext] = None, workflow_id: str = "unknown"):
+    def __init__(self, metrics_context: MetricsContext, workflow_id: str = "unknown"):
         """Initialize the agent hooks
         
         Args:
@@ -30,7 +30,7 @@ class MetricsAgentHooks(AgentHooks):
         """
         super().__init__()
         logger.debug("Initializing MetricsAgentHooks for workflow '%s'", workflow_id)
-        self.metrics = metrics_context or get_default_metrics_context()
+        self.metrics = metrics_context
         self.workflow_id = workflow_id
         
     async def on_start(self, context: RunContextWrapper, agent: Agent) -> None:
@@ -280,7 +280,7 @@ class MetricsRunHooks(RunHooks):
     These hooks record events and metrics for run lifecycle events.
     """
     
-    def __init__(self, metrics_context: Optional[MetricsContext] = None, workflow_id: str = "unknown"):
+    def __init__(self, metrics_context: MetricsContext, workflow_id: str = "unknown"):
         """Initialize the run hooks
         
         Args:
@@ -289,7 +289,7 @@ class MetricsRunHooks(RunHooks):
         """
         super().__init__()
         logger.debug("Initializing MetricsRunHooks for workflow '%s'", workflow_id)
-        self.metrics = metrics_context or get_default_metrics_context()
+        self.metrics = metrics_context
         self.workflow_id = workflow_id
         
     async def on_run_start(self, context: RunContextWrapper) -> None:
@@ -298,7 +298,8 @@ class MetricsRunHooks(RunHooks):
         Args:
             context: The run context wrapper
         """
-        run_id = get_current_trace().trace_id if get_current_trace() else str(uuid.uuid4())
+        trace = get_current_trace()
+        run_id = trace.trace_id if trace is not None else str(uuid.uuid4())
         logger.info("Run '%s' starting in workflow '%s'", run_id, self.workflow_id)
         
         # Start a timer for the run
@@ -321,7 +322,8 @@ class MetricsRunHooks(RunHooks):
             context: The run context wrapper
             result: The result of the run
         """
-        run_id = get_current_trace().trace_id if get_current_trace() else str(uuid.uuid4())
+        trace = get_current_trace()
+        run_id = trace.trace_id if trace is not None else str(uuid.uuid4())
         logger.info("Run '%s' completed in workflow '%s'", run_id, self.workflow_id)
         
         # Stop the run timer and record duration
@@ -331,9 +333,6 @@ class MetricsRunHooks(RunHooks):
         input_tokens = context.usage.input_tokens
         output_tokens = context.usage.output_tokens
         total_tokens = context.usage.total_tokens or (input_tokens + output_tokens)
-        
-        # Get cost information from context if available
-        cost = getattr(context.usage, 'cost', None)
         
         # Record token usage metrics
         if total_tokens > 0:
@@ -369,17 +368,6 @@ class MetricsRunHooks(RunHooks):
                 }
             )
             
-        # Record cost if available
-        if cost > 0:
-            self.metrics.record_metric(
-                metric_name="run_cost",
-                value=cost,
-                dimensions={
-                    "run_id": run_id,
-                    "workflow_id": self.workflow_id
-                }
-            )
-        
         # Record run completion event
         self.metrics.record_event(
             event_type="run_end",
@@ -391,7 +379,6 @@ class MetricsRunHooks(RunHooks):
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "total_tokens": total_tokens,
-                "cost": cost,
                 "timestamp": time.time()
             }
         )
@@ -412,7 +399,8 @@ class MetricsRunHooks(RunHooks):
             context: The run context wrapper
             agent: The agent that started
         """
-        run_id = get_current_trace().trace_id if get_current_trace() else str(uuid.uuid4())
+        trace = get_current_trace()
+        run_id = trace.trace_id if trace is not None else str(uuid.uuid4())
         logger.info("Run: Agent '%s' starting in run '%s', workflow '%s'", 
                    agent.name, run_id, self.workflow_id)
                    
@@ -440,7 +428,8 @@ class MetricsRunHooks(RunHooks):
             agent: The agent that finished
             output: The output of the agent
         """
-        run_id = get_current_trace().trace_id if get_current_trace() else str(uuid.uuid4())
+        trace = get_current_trace()
+        run_id = trace.trace_id if trace is not None else str(uuid.uuid4())
         logger.info("Run: Agent '%s' completed in run '%s', workflow '%s'", 
                    agent.name, run_id, self.workflow_id)
         
@@ -526,7 +515,8 @@ class MetricsRunHooks(RunHooks):
             agent: The agent executing the tool
             tool: The tool being executed
         """
-        run_id = get_current_trace().trace_id if get_current_trace() else str(uuid.uuid4())
+        trace = get_current_trace()
+        run_id = trace.trace_id if trace is not None else str(uuid.uuid4())
         logger.info("Run: Tool '%s' starting for agent '%s' in run '%s', workflow '%s'", 
                    tool.name, agent.name, run_id, self.workflow_id)
                    
@@ -556,7 +546,8 @@ class MetricsRunHooks(RunHooks):
             tool: The tool that was executed
             result: The result of the tool execution
         """
-        run_id = get_current_trace().trace_id if get_current_trace() else str(uuid.uuid4())
+        trace = get_current_trace()
+        run_id = trace.trace_id if trace is not None else str(uuid.uuid4())
         logger.info("Run: Tool '%s' completed for agent '%s' in run '%s', workflow '%s'", 
                    tool.name, agent.name, run_id, self.workflow_id)
         result_preview = result[:200] + "..." if len(result) > 200 else result
@@ -651,7 +642,8 @@ class MetricsRunHooks(RunHooks):
             from_agent: The agent handing off control
             to_agent: The agent receiving control
         """
-        run_id = get_current_trace().trace_id if get_current_trace() else str(uuid.uuid4())
+        trace = get_current_trace()
+        run_id = trace.trace_id if trace is not None else str(uuid.uuid4())
         logger.info("Run: Handoff from agent '%s' to '%s' in run '%s', workflow '%s'", 
                    from_agent.name, to_agent.name, run_id, self.workflow_id)
                    

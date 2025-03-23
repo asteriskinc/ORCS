@@ -4,8 +4,6 @@ from .context import (
     CompositeMetricsContext,
     WorkflowMetricsContext,
     AgentMetricsContext,
-    get_default_metrics_context,
-    set_default_metrics_context
 )
 
 from .hooks import (
@@ -19,8 +17,6 @@ __all__ = [
     'CompositeMetricsContext',
     'WorkflowMetricsContext',
     'AgentMetricsContext',
-    'get_default_metrics_context',
-    'set_default_metrics_context',
     'MetricsAgentHooks',
     'MetricsRunHooks'
 ] 
