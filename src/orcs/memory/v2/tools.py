@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Tuple, Optional
 import logging
 import uuid
 from datetime import datetime
+import re
 
 from agents import function_tool
 
@@ -88,6 +89,32 @@ def recall(context, key: str, scope: Optional[str] = None):
     
     logger.info("No information found for '%s' in scope '%s'", key, effective_scope)
     return f"No information found for '{key}' in scope '{effective_scope}'"
+
+def recall_with_error_handling(key: str, scope: str, memory_system: Optional[MemorySystem] = None, 
+                               raise_if_missing: bool = False) -> Any:
+    """Utility function to retrieve data with options for error handling
+    
+    This utility function provides v1-style error handling on top of v2's memory system.
+    
+    Args:
+        key: The key to retrieve
+        scope: The scope to retrieve from
+        memory_system: The memory system to use (default: global default)
+        raise_if_missing: Whether to raise KeyError if key is not found
+        
+    Returns:
+        The stored value, or None if not found
+        
+    Raises:
+        KeyError: If the key doesn't exist and raise_if_missing is True
+    """
+    memory = memory_system or get_default_memory_system()
+    value = memory.retrieve(key, scope)
+    
+    if value is None and raise_if_missing:
+        raise KeyError(f"Key '{key}' not found in scope '{scope}'")
+        
+    return value
 
 @function_tool
 def forget(context, key: str, scope: Optional[str] = None):
@@ -391,4 +418,40 @@ def get_memory_tools():
         workspace_search,
         remember_fact,
         remember_insight
-    ] 
+    ]
+
+def list_keys_by_scope_pattern(scope_pattern: str = "*", memory_system: Optional[MemorySystem] = None) -> Dict[str, List[str]]:
+    """List keys across multiple scopes matching a pattern
+    
+    This utility function provides v1-style cross-scope key listing.
+    
+    Args:
+        scope_pattern: Pattern to match against scopes
+        memory_system: The memory system to use (default: global default)
+        
+    Returns:
+        Dictionary mapping scope names to lists of keys
+    """
+    memory = memory_system or get_default_memory_system()
+    
+    # Only works with BasicMemorySystem or subclasses
+    if not isinstance(memory, BasicMemorySystem):
+        logger.warning("list_keys_by_scope_pattern only works with BasicMemorySystem")
+        return {}
+    
+    # Convert glob pattern to regex
+    regex_pattern = "^" + scope_pattern.replace("*", ".*") + "$"
+    pattern = re.compile(regex_pattern)
+    
+    # Get all scopes from the memory system
+    all_scopes = list(memory.data.keys())
+    
+    # Find matching scopes and get their keys
+    results = {}
+    for scope in all_scopes:
+        if pattern.match(scope):
+            keys = memory.list_keys("*", scope)
+            if keys:
+                results[scope] = keys
+    
+    return results 

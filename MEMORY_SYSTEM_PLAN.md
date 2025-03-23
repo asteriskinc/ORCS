@@ -1,5 +1,7 @@
 # ORCS Memory System Enhancement Plan
 
+> **Note**: Implementation of this plan has moved forward with Memory v2, which is now the recommended memory system. See `docs/MEMORY_V1_TO_V2_MIGRATION.md` for migration guidance.
+
 ## Current State
 
 The current ORCS memory system functions primarily as a system log, capturing:

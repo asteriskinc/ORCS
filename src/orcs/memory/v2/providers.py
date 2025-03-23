@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from typing import Any, List, Dict, Optional
 import logging
 import json
+import os
+import pickle
 
 # Set up logger
 logger = logging.getLogger("orcs.memory.v2.providers")
@@ -69,6 +71,25 @@ class StorageProvider(ABC):
             
         Returns:
             True if the key exists, False otherwise
+        """
+        pass
+
+    @abstractmethod
+    def get_scope(self, key: str) -> str:
+        """Get the scope of a specific key
+        
+        This method is used by hierarchical access control to determine
+        parent-child relationships between scopes.
+        
+        Args:
+            key: The key to get the scope for
+            
+        Returns:
+            The scope of the key
+            
+        Raises:
+            KeyError: If the key doesn't exist
+            ValueError: If the scope can't be determined
         """
         pass
 
@@ -171,118 +192,105 @@ class InMemoryStorageProvider(StorageProvider):
                     key, "exists" if has_key else "does not exist", scope)
         return has_key
 
+    def get_scope(self, key: str) -> str:
+        """Get the scope of a specific key
+        
+        Args:
+            key: The key to get the scope for
+            
+        Returns:
+            The scope of the key
+            
+        Raises:
+            KeyError: If the key doesn't exist
+            ValueError: If the scope can't be determined
+        """
+        # Search all scopes for the key
+        for scope, scope_data in self.data.items():
+            if key in scope_data:
+                return scope
+                
+        raise KeyError(f"Key '{key}' not found in any scope")
+
 
 class FileStorageProvider(StorageProvider):
-    """File-based implementation of the storage provider
+    """File-based implementation of storage provider"""
     
-    Stores data in JSON files organized by scope.
-    """
-    
-    def __init__(self, base_path: str):
+    def __init__(self, storage_dir: str):
         """Initialize a file-based storage provider
         
         Args:
-            base_path: Base directory for storing files
+            storage_dir: The directory to store files in
         """
-        import os
-        self.base_path = base_path
-        logger.info("Initializing FileStorageProvider at %s", base_path)
+        logger.info("Initializing FileStorageProvider in '%s'", storage_dir)
+        self.storage_dir = storage_dir
+        self.index_file = os.path.join(storage_dir, "memory_index.json")
+        self.index = self._load_index()
         
-        # Ensure base directory exists
-        os.makedirs(base_path, exist_ok=True)
+        # Create the storage directory if it doesn't exist
+        os.makedirs(storage_dir, exist_ok=True)
         
-        # Cache for loaded scopes
-        self.cache = {}
-    
-    def _get_scope_path(self, scope: str) -> str:
-        """Get the file path for a scope
+    def _load_index(self) -> Dict[str, Dict[str, str]]:
+        """Load the index file
+        
+        Returns:
+            The index data, mapping (scope, key) to file paths
+        """
+        if os.path.exists(self.index_file):
+            try:
+                with open(self.index_file, 'r') as f:
+                    return json.load(f)
+            except json.JSONDecodeError:
+                logger.warning("Failed to load index file, creating new index")
+                return {}
+        return {}
+        
+    def _save_index(self) -> None:
+        """Save the index file"""
+        with open(self.index_file, 'w') as f:
+            json.dump(self.index, f)
+        
+    def _get_file_path(self, key: str, scope: str) -> str:
+        """Get the file path for a key in a scope
         
         Args:
-            scope: The scope to get the path for
+            key: The key to get the path for
+            scope: The scope the key is in
             
         Returns:
-            The file path for the scope
+            The file path to use
         """
-        import os
-        # Replace characters that are not allowed in filenames
-        safe_scope = scope.replace(":", "_").replace("/", "_")
-        return os.path.join(self.base_path, f"{safe_scope}.json")
-    
-    def _load_scope(self, scope: str) -> Dict[str, Any]:
-        """Load a scope from disk
+        # Use a deterministic filename based on scope and key
+        import hashlib
+        # Hash the scope and key to create a safe filename
+        hash_str = hashlib.md5(f"{scope}:{key}".encode()).hexdigest()
+        return os.path.join(self.storage_dir, f"{hash_str}.pickle")
         
-        Args:
-            scope: The scope to load
-            
-        Returns:
-            The loaded scope data
-        """
-        import os
-        
-        # Check if already in cache
-        if scope in self.cache:
-            return self.cache[scope]
-            
-        # Get the file path
-        scope_path = self._get_scope_path(scope)
-        
-        # If file doesn't exist, return empty dict
-        if not os.path.exists(scope_path):
-            self.cache[scope] = {}
-            return {}
-            
-        # Load from file
-        try:
-            with open(scope_path, 'r') as f:
-                scope_data = json.load(f)
-                self.cache[scope] = scope_data
-                logger.debug("Loaded scope '%s' from disk", scope)
-                return scope_data
-        except Exception as e:
-            logger.error("Error loading scope '%s' from disk: %s", scope, str(e))
-            self.cache[scope] = {}
-            return {}
-    
-    def _save_scope(self, scope: str) -> None:
-        """Save a scope to disk
-        
-        Args:
-            scope: The scope to save
-        """
-        # Get the file path
-        scope_path = self._get_scope_path(scope)
-        
-        # Save to file
-        try:
-            with open(scope_path, 'w') as f:
-                json.dump(self.cache[scope], f, indent=2)
-                logger.debug("Saved scope '%s' to disk", scope)
-        except Exception as e:
-            logger.error("Error saving scope '%s' to disk: %s", scope, str(e))
-    
     def save(self, key: str, value: Any, scope: str) -> None:
-        """Save a value with its scope
+        """Save a value to a file
         
         Args:
             key: The key to save under
             value: The value to save
             scope: The scope to save in
         """
-        # Load scope if not in cache
-        if scope not in self.cache:
-            self._load_scope(scope)
-            
-        # Update cache
-        if scope not in self.cache:
-            self.cache[scope] = {}
-        self.cache[scope][key] = value
+        file_path = self._get_file_path(key, scope)
         
-        # Save to disk
-        self._save_scope(scope)
-        logger.debug("Saved value at key '%s' in scope '%s'", key, scope)
-    
+        # Save the data
+        with open(file_path, 'wb') as f:
+            pickle.dump(value, f)
+            
+        # Update the index
+        if scope not in self.index:
+            self.index[scope] = {}
+        self.index[scope][key] = file_path
+        self._save_index()
+        
+        logger.debug("Saved value at key '%s' in scope '%s' to '%s'", 
+                    key, scope, file_path)
+        
     def load(self, key: str, scope: str) -> Any:
-        """Load a value by key from a scope
+        """Load a value from a file
         
         Args:
             key: The key to load
@@ -291,20 +299,28 @@ class FileStorageProvider(StorageProvider):
         Returns:
             The loaded value, or None if not found
         """
-        # Load scope if not in cache
-        if scope not in self.cache:
-            self._load_scope(scope)
-            
-        # Check if key exists
-        if scope not in self.cache or key not in self.cache[scope]:
+        if scope not in self.index or key not in self.index[scope]:
             logger.debug("Key '%s' not found in scope '%s'", key, scope)
             return None
             
-        logger.debug("Loaded value from key '%s' in scope '%s'", key, scope)
-        return self.cache[scope][key]
-    
+        file_path = self.index[scope][key]
+        if not os.path.exists(file_path):
+            logger.warning("File for key '%s' in scope '%s' not found: '%s'", 
+                          key, scope, file_path)
+            return None
+            
+        try:
+            with open(file_path, 'rb') as f:
+                value = pickle.load(f)
+            logger.debug("Loaded value from key '%s' in scope '%s' from '%s'", 
+                        key, scope, file_path)
+            return value
+        except Exception as e:
+            logger.error("Failed to load value from '%s': %s", file_path, str(e))
+            return None
+        
     def delete(self, key: str, scope: str) -> bool:
-        """Delete a key-value pair from a scope
+        """Delete a value from storage
         
         Args:
             key: The key to delete
@@ -313,71 +329,70 @@ class FileStorageProvider(StorageProvider):
         Returns:
             True if something was deleted, False otherwise
         """
-        # Load scope if not in cache
-        if scope not in self.cache:
-            self._load_scope(scope)
-            
-        # Check if key exists
-        if scope not in self.cache or key not in self.cache[scope]:
+        if scope not in self.index or key not in self.index[scope]:
             logger.debug("Cannot delete: key '%s' not found in scope '%s'", key, scope)
             return False
             
-        # Delete from cache
-        del self.cache[scope][key]
+        file_path = self.index[scope][key]
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                logger.error("Failed to delete file '%s': %s", file_path, str(e))
+                
+        # Update the index
+        del self.index[scope][key]
+        if not self.index[scope]:
+            del self.index[scope]
+        self._save_index()
         
-        # Save to disk
-        self._save_scope(scope)
         logger.debug("Deleted key '%s' from scope '%s'", key, scope)
         return True
-    
+        
     def list_keys(self, pattern: str, scope: str) -> List[str]:
         """List keys matching a pattern in a scope
         
         Args:
-            pattern: Pattern to match keys against
-            scope: The scope to list keys from
+            pattern: The pattern to match against
+            scope: The scope to list from
             
         Returns:
-            List of matching key names
+            List of matching keys
         """
         import re
         
-        # Load scope if not in cache
-        if scope not in self.cache:
-            self._load_scope(scope)
-            
-        if scope not in self.cache:
+        if scope not in self.index:
             logger.debug("No keys found in scope '%s'", scope)
             return []
             
-        # Simple pattern matching using regex
+        # Convert glob pattern to regex
         if pattern == "*":
-            keys = list(self.cache[scope].keys())
+            keys = list(self.index[scope].keys())
         else:
-            # Convert glob pattern to regex
             regex_pattern = "^" + pattern.replace("*", ".*") + "$"
             regex = re.compile(regex_pattern)
-            keys = [k for k in self.cache[scope].keys() if regex.match(k)]
+            keys = [k for k in self.index[scope].keys() if regex.match(k)]
             
         logger.debug("Found %d keys matching pattern '%s' in scope '%s'", 
                     len(keys), pattern, scope)
         return keys
-    
-    def has_key(self, key: str, scope: str) -> bool:
-        """Check if a key exists in a scope
+        
+    def get_scope(self, key: str) -> str:
+        """Get the scope of a specific key
         
         Args:
-            key: The key to check
-            scope: The scope to check in
+            key: The key to get the scope for
             
         Returns:
-            True if the key exists, False otherwise
-        """
-        # Load scope if not in cache
-        if scope not in self.cache:
-            self._load_scope(scope)
+            The scope of the key
             
-        has_key = scope in self.cache and key in self.cache[scope]
-        logger.debug("Key '%s' %s in scope '%s'", 
-                    key, "exists" if has_key else "does not exist", scope)
-        return has_key 
+        Raises:
+            KeyError: If the key doesn't exist
+            ValueError: If the scope can't be determined
+        """
+        # Search all scopes for the key
+        for scope, scope_data in self.index.items():
+            if key in scope_data:
+                return scope
+                
+        raise KeyError(f"Key '{key}' not found in any scope") 

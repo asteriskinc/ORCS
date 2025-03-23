@@ -138,4 +138,173 @@ class StorageBackedMemorySystem(MemorySystem):
         results.sort(key=lambda x: x[2], reverse=True)
         logger.debug("Found %d matches for query '%s' in scope '%s'", 
                     len(results[:limit]), query, scope)
-        return results[:limit] 
+        return results[:limit]
+                    
+    def has_access(self, requesting_scope: str, target_scope: str) -> bool:
+        """Check if a scope has access to data in another scope
+        
+        This basic implementation only allows access to:
+        - The "global" scope (accessible by all)
+        - The same scope (a scope can access its own data)
+        
+        Args:
+            requesting_scope: The scope requesting access
+            target_scope: The scope being accessed
+            
+        Returns:
+            True if access is allowed, False otherwise
+        """
+        # Global scope is accessible by all
+        if target_scope == "global":
+            return True
+            
+        # Same scope has access
+        if requesting_scope == target_scope:
+            return True
+            
+        # No hierarchical access in the basic implementation
+        return False 
+
+class ScopedAccessStorageMemorySystem(StorageBackedMemorySystem):
+    """Storage-backed memory system with hierarchical scope access controls
+    
+    This extended memory system adds v1-style access control:
+    - "global" scope is accessible by all
+    - A scope has access to its own data
+    - A parent scope has access to its children's data
+    
+    This is useful for maintaining hierarchical workflows where a higher-level
+    scope (like a workflow) needs access to data in child scopes (like tasks).
+    """
+    
+    def has_access(self, requesting_scope: str, target_scope: str) -> bool:
+        """Check if a scope has access to data in another scope
+        
+        Access rules:
+        - "global" scope is accessible by all
+        - A scope has access to its own data
+        - A parent scope has access to its children's data
+          (e.g., "workflow:123" has access to "workflow:123:task:456")
+        
+        Args:
+            requesting_scope: The scope requesting access
+            target_scope: The scope being accessed
+            
+        Returns:
+            True if access is allowed, False otherwise
+        """
+        # Global scope is accessible by all
+        if target_scope == "global":
+            return True
+            
+        # Same scope has access
+        if requesting_scope == target_scope:
+            return True
+            
+        # Check if requesting_scope is a parent of target_scope
+        has_access = target_scope.startswith(f"{requesting_scope}:")
+        logger.debug("Access check: %s -> %s = %s", requesting_scope, target_scope, has_access)
+        return has_access
+    
+    def retrieve(self, key: str, scope: str = "global") -> Any:
+        """Retrieve data with hierarchical scope access controls
+        
+        This method first checks the specified scope directly.
+        If not found and the scope is "global", it returns None.
+        Otherwise, it checks child scopes that the requesting scope has access to.
+        
+        Args:
+            key: The key to retrieve
+            scope: The scope to retrieve from (default: "global")
+            
+        Returns:
+            The stored value, or None if not found or not accessible
+        """
+        # First try direct access in the provided scope
+        value = super().retrieve(key, scope)
+        if value is not None:
+            return value
+            
+        # If not in global scope, try to find in child scopes
+        if scope != "global":
+            # Get all available scopes from the storage provider
+            all_scopes = set()
+            try:
+                # Try to get all keys and extract their scopes
+                all_keys = self.storage_provider.list_keys("*", "*")
+                for stored_key in all_keys:
+                    try:
+                        key_scope = self.storage_provider.get_scope(stored_key)
+                        all_scopes.add(key_scope)
+                    except (KeyError, ValueError, NotImplementedError, AttributeError):
+                        # If we can't get the scope for this key, skip it
+                        continue
+            except (NotImplementedError, AttributeError):
+                # If the provider doesn't support list_keys with "*" scope or get_scope,
+                # we can't do hierarchical access across scopes
+                logger.warning("Storage provider doesn't support hierarchical access")
+                return None
+            
+            # Look through all stored scopes for ones the requester can access
+            for data_scope in all_scopes:
+                # Skip if we already checked this scope or don't have access
+                if data_scope == scope or not self.has_access(scope, data_scope):
+                    continue
+                    
+                # Try to retrieve the key from this child scope
+                value = self.storage_provider.load(key, data_scope)
+                if value is not None:
+                    logger.debug("Found key '%s' in child scope '%s' for requester '%s'", 
+                                key, data_scope, scope)
+                    return value
+                    
+        return None
+        
+    def list_keys(self, pattern: str = "*", scope: str = "global", include_child_scopes: bool = False) -> List[str]:
+        """List keys matching a pattern in specified scope
+        
+        Args:
+            pattern: Pattern to match keys against (default: "*" for all keys)
+            scope: The scope to list keys from (default: "global")
+            include_child_scopes: Whether to include keys from child scopes
+            
+        Returns:
+            List of matching key names
+        """
+        # Get keys from the direct scope
+        keys = super().list_keys(pattern, scope)
+        
+        # If not including child scopes, return just these keys
+        if not include_child_scopes:
+            return keys
+            
+        # Get all available scopes from the storage provider
+        all_scopes = set()
+        try:
+            # Try to get all keys and extract their scopes
+            all_keys = self.storage_provider.list_keys("*", "*")
+            for stored_key in all_keys:
+                try:
+                    key_scope = self.storage_provider.get_scope(stored_key)
+                    all_scopes.add(key_scope)
+                except (KeyError, ValueError, NotImplementedError, AttributeError):
+                    # If we can't get the scope for this key, skip it
+                    continue
+        except (NotImplementedError, AttributeError):
+            # If the provider doesn't support list_keys with "*" scope or get_scope,
+            # we can't do hierarchical access across scopes
+            logger.warning("Storage provider doesn't support hierarchical key listing")
+            return keys
+        
+        # Collect keys from child scopes
+        for data_scope in all_scopes:
+            # Skip if we already included this scope or don't have access
+            if data_scope == scope or not self.has_access(scope, data_scope):
+                continue
+                
+            # Get matching keys from this child scope
+            child_keys = super().list_keys(pattern, data_scope)
+            keys.extend(child_keys)
+            
+        # Return deduplicated keys
+        return list(set(keys)) 

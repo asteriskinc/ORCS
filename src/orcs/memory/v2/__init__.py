@@ -1,6 +1,7 @@
 from .system import (
     MemorySystem,
-    BasicMemorySystem
+    BasicMemorySystem,
+    ScopedAccessMemorySystem
 )
 
 from .providers import (
@@ -10,7 +11,8 @@ from .providers import (
 )
 
 from .storage_memory import (
-    StorageBackedMemorySystem
+    StorageBackedMemorySystem,
+    ScopedAccessStorageMemorySystem
 )
 
 from .tools import (
@@ -19,9 +21,11 @@ from .tools import (
     get_agent_scope,
     remember,
     recall,
+    recall_with_error_handling,
     forget,
     list_memories,
     search_memory,
+    list_keys_by_scope_pattern,
     create_workspace,
     workspace_write,
     workspace_read,
@@ -40,6 +44,7 @@ __all__ = [
     # Core memory system
     'MemorySystem',
     'BasicMemorySystem',
+    'ScopedAccessMemorySystem',
     
     # Storage providers
     'StorageProvider',
@@ -48,6 +53,7 @@ __all__ = [
     
     # Enhanced memory systems
     'StorageBackedMemorySystem',
+    'ScopedAccessStorageMemorySystem',
     
     # Memory utility functions
     'get_default_memory_system',
@@ -57,9 +63,11 @@ __all__ = [
     # Memory tools
     'remember',
     'recall',
+    'recall_with_error_handling',
     'forget',
     'list_memories',
     'search_memory',
+    'list_keys_by_scope_pattern',
     'create_workspace',
     'workspace_write',
     'workspace_read',
