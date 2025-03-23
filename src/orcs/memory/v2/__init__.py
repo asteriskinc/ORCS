@@ -15,24 +15,32 @@ from .storage_memory import (
     ScopedAccessStorageMemorySystem
 )
 
+from .content import (
+    MemoryContent,
+    RichMemoryContent,
+    EmbeddableMemoryContent
+)
+
+from .searchable import (
+    EmbeddingProvider,
+    SimpleEmbeddingProvider,
+    SearchableMemorySystem,
+    cosine_similarity
+)
+
 from .tools import (
     get_default_memory_system,
     set_default_memory_system,
-    get_agent_scope,
     remember,
     recall,
     recall_with_error_handling,
     forget,
     list_memories,
-    search_memory,
     list_keys_by_scope_pattern,
     create_workspace,
     workspace_write,
     workspace_read,
-    workspace_search,
-    remember_fact,
-    remember_insight,
-    get_memory_tools
+    workspace_search
 )
 
 from .compatibility import (
@@ -55,26 +63,32 @@ __all__ = [
     'StorageBackedMemorySystem',
     'ScopedAccessStorageMemorySystem',
     
+    # Memory content model
+    'MemoryContent',
+    'RichMemoryContent',
+    'EmbeddableMemoryContent',
+    
+    # Searchable memory
+    'EmbeddingProvider',
+    'SimpleEmbeddingProvider',
+    'SearchableMemorySystem',
+    'cosine_similarity',
+    
     # Memory utility functions
     'get_default_memory_system',
     'set_default_memory_system',
-    'get_agent_scope',
     
-    # Memory tools
+    # Basic memory functions
     'remember',
     'recall',
     'recall_with_error_handling',
     'forget',
     'list_memories',
-    'search_memory',
     'list_keys_by_scope_pattern',
     'create_workspace',
     'workspace_write',
     'workspace_read',
     'workspace_search',
-    'remember_fact',
-    'remember_insight',
-    'get_memory_tools',
     
     # Compatibility layer
     'LegacyCompatibleMemorySystem',
