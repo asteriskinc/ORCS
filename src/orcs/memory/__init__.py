@@ -4,81 +4,96 @@ This module provides memory capabilities for ORCS agents and workflows,
 enabling storage, retrieval, and semantic search of information.
 """
 
-# Base memory system
-from .system import MemorySystem, AgentContext
-
-# Enhanced memory with search capabilities
-from .searchable import SearchableMemorySystem, SearchableAgentContext
-
-# Rich memory content model
-from .content import MemoryContent, generate_memory_key
+# Core memory system
+from .system import (
+    MemorySystem,
+    BasicMemorySystem,
+    ScopedAccessMemorySystem
+)
 
 # Storage providers
 from .providers import (
-    MemoryStorageProvider,
+    StorageProvider,
     InMemoryStorageProvider,
     FileStorageProvider
 )
 
-# Embedding providers
-from .embeddings import (
-    EmbeddingProvider,
-    MockEmbeddingProvider,
-    cosine_similarity,
-    create_default_embedding_provider
+# Storage-backed memory systems
+from .storage_memory import (
+    StorageBackedMemorySystem,
+    ScopedAccessStorageMemorySystem
 )
 
-# Check if optional providers are available
-from .embeddings import OPENAI_AVAILABLE, SENTENCE_TRANSFORMERS_AVAILABLE
+# Memory content model
+from .content import (
+    MemoryContent,
+    RichMemoryContent,
+    EmbeddableMemoryContent
+)
 
-# Conditionally expose optional providers
-if OPENAI_AVAILABLE:
-    from .embeddings import OpenAIEmbeddingProvider
+# Searchable memory
+from .searchable import (
+    EmbeddingProvider,
+    SimpleEmbeddingProvider,
+    SearchableMemorySystem,
+    cosine_similarity
+)
 
-if SENTENCE_TRANSFORMERS_AVAILABLE:
-    from .embeddings import HuggingFaceEmbeddingProvider
-
-# Re-export v2 components as "memory"
-from .v2 import (
+# Memory utility functions
+from .tools import (
     get_default_memory_system,
     set_default_memory_system,
-    get_memory_tools
+    remember,
+    recall,
+    recall_with_error_handling,
+    forget,
+    list_memories,
+    list_keys_by_scope_pattern,
+    create_workspace,
+    workspace_write,
+    workspace_read,
+    workspace_search
 )
 
-# Explicitly export the old components for backward compatibility
 __all__ = [
-    # Legacy components (v1)
+    # Core memory system
     'MemorySystem',
-    'AgentContext',
-    'SearchableMemorySystem', 
-    'SearchableAgentContext',
-    'MemoryContent',
-    'generate_memory_key',
-    
-    # New components (v2)
-    'get_default_memory_system',
-    'set_default_memory_system',
-    'get_memory_tools',
+    'BasicMemorySystem',
+    'ScopedAccessMemorySystem',
     
     # Storage providers
-    "MemoryStorageProvider",
-    "InMemoryStorageProvider",
-    "FileStorageProvider",
+    'StorageProvider',
+    'InMemoryStorageProvider',
+    'FileStorageProvider',
     
-    # Embedding providers
-    "EmbeddingProvider",
-    "MockEmbeddingProvider",
-    "cosine_similarity",
-    "create_default_embedding_provider",
+    # Enhanced memory systems
+    'StorageBackedMemorySystem',
+    'ScopedAccessStorageMemorySystem',
     
-    # Feature flags
-    "OPENAI_AVAILABLE",
-    "SENTENCE_TRANSFORMERS_AVAILABLE"
+    # Memory content model
+    'MemoryContent',
+    'RichMemoryContent',
+    'EmbeddableMemoryContent',
+    
+    # Searchable memory
+    'EmbeddingProvider',
+    'SimpleEmbeddingProvider',
+    'SearchableMemorySystem',
+    'cosine_similarity',
+    
+    # Memory utility functions
+    'get_default_memory_system',
+    'set_default_memory_system',
+    
+    # Basic memory functions
+    'remember',
+    'recall',
+    'recall_with_error_handling',
+    'forget',
+    'list_memories',
+    'list_keys_by_scope_pattern',
+    'create_workspace',
+    'workspace_write',
+    'workspace_read',
+    'workspace_search'
 ]
-
-# Conditionally add optional providers to __all__
-if OPENAI_AVAILABLE:
-    __all__.append("OpenAIEmbeddingProvider")
-
-if SENTENCE_TRANSFORMERS_AVAILABLE:
-    __all__.append("HuggingFaceEmbeddingProvider")

@@ -18,7 +18,7 @@ def function_tool(func):
     return wrapper
 
 # Import memory system components
-from orcs.memory.v2 import (
+from orcs.memory import (
     MemorySystem,
     SearchableMemorySystem,
     MemoryContent,

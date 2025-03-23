@@ -5,7 +5,7 @@ from .system import MemorySystem
 from .providers import StorageProvider, InMemoryStorageProvider
 
 # Set up logger
-logger = logging.getLogger("orcs.memory.v2.storage_memory")
+logger = logging.getLogger("orcs.memory.storage_memory")
 
 class StorageBackedMemorySystem(MemorySystem):
     """Memory system backed by a storage provider
@@ -176,6 +176,17 @@ class ScopedAccessStorageMemorySystem(StorageBackedMemorySystem):
     This is useful for maintaining hierarchical workflows where a higher-level
     scope (like a workflow) needs access to data in child scopes (like tasks).
     """
+    
+    def __init__(self, storage_provider: StorageProvider, default_access_scope: str = "global"):
+        """Initialize a storage-backed memory system with hierarchical access controls
+        
+        Args:
+            storage_provider: Provider for storing memory data
+            default_access_scope: The default scope for access control
+        """
+        super().__init__(storage_provider)
+        self.default_access_scope = default_access_scope
+        logger.info("Initialized ScopedAccessStorageMemorySystem with default scope '%s'", default_access_scope)
     
     def has_access(self, requesting_scope: str, target_scope: str) -> bool:
         """Check if a scope has access to data in another scope

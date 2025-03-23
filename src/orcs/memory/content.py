@@ -1,123 +1,241 @@
-from typing import Any, Dict, List, Optional
-import uuid
-from datetime import datetime
-import logging
+"""Memory content model for the v2 memory system.
 
-# Set up logger
-logger = logging.getLogger("orcs.memory.content")
+This module provides classes for structured memory content with various
+capabilities including rich metadata, importance, tagging, and embedding.
+"""
+
+from typing import Any, Dict, List, Optional, Union
+from datetime import datetime
+import numpy as np
+import json
 
 class MemoryContent:
-    """Rich content model for agent memories
+    """Base class for structured memory content.
     
-    This class represents a rich memory entity that can be stored in the memory system,
-    with support for metadata, importance ranking, and embeddings.
+    This class serves as a lightweight container for structured content
+    with basic metadata. It can be extended with additional functionality.
     """
     
-    def __init__(self, 
-                 content: Any,
-                 importance: float = 0.5,
-                 memory_type: str = "knowledge",
-                 tags: Optional[List[str]] = None,
-                 metadata: Optional[Dict[str, Any]] = None):
-        """Initialize a memory content object
+    def __init__(self, content: Any, metadata: Optional[Dict[str, Any]] = None):
+        """Initialize memory content.
         
         Args:
-            content: The actual content to be stored
-            importance: Importance score (0.0 to 1.0) for this memory
-            memory_type: Type of memory (e.g., "knowledge", "insight", "observation")
-            tags: List of tags for better retrieval
-            metadata: Additional metadata for this memory
+            content: The primary content to store
+            metadata: Optional metadata dictionary
         """
         self.content = content
-        self.importance = max(0.0, min(1.0, importance))  # Clamp to [0.0, 1.0]
-        self.memory_type = memory_type
-        self.tags = tags or []
         self.metadata = metadata or {}
-        self.created_at = datetime.now()
-        self.last_accessed_at = None
-        self.access_count = 0
-        self.embedding = None
         
-    def was_accessed(self) -> None:
-        """Update access metadata when this memory is retrieved"""
-        self.last_accessed_at = datetime.now()
-        self.access_count += 1
-        
-    def update_importance(self, new_importance: float) -> None:
-        """Update the importance score
+        # Record creation time if not provided
+        if "creation_time" not in self.metadata:
+            self.metadata["creation_time"] = datetime.now().isoformat()
+    
+    def add_metadata(self, key: str, value: Any) -> None:
+        """Add a metadata item.
         
         Args:
-            new_importance: New importance score (0.0 to 1.0)
+            key: Metadata key
+            value: Metadata value
         """
-        self.importance = max(0.0, min(1.0, new_importance))
-        
-    def add_tags(self, new_tags: List[str]) -> None:
-        """Add tags to this memory
+        self.metadata[key] = value
+    
+    def get_metadata(self, key: str, default: Any = None) -> Any:
+        """Get a metadata item.
         
         Args:
-            new_tags: List of tags to add
+            key: Metadata key
+            default: Default value if key not found
+            
+        Returns:
+            The metadata value or default
         """
-        self.tags.extend([tag for tag in new_tags if tag not in self.tags])
-        
+        return self.metadata.get(key, default)
+    
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for serialization
+        """Convert to a dictionary for serialization.
         
         Returns:
-            Dictionary representation of this memory content
+            Dictionary representation
         """
         return {
             "content": self.content,
-            "importance": self.importance,
-            "memory_type": self.memory_type,
-            "tags": self.tags,
             "metadata": self.metadata,
-            "created_at": self.created_at.isoformat(),
-            "last_accessed_at": self.last_accessed_at.isoformat() if self.last_accessed_at else None,
-            "access_count": self.access_count,
-            # Embedding is not included as it may be large and is typically regenerated
+            "type": self.__class__.__name__
         }
-        
+    
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'MemoryContent':
-        """Create a MemoryContent object from a dictionary
+    def from_dict(cls, data: Dict[str, Any]) -> "MemoryContent":
+        """Create a MemoryContent instance from a dictionary.
         
         Args:
-            data: Dictionary representation of memory content
+            data: Dictionary representation
             
         Returns:
-            MemoryContent object
+            MemoryContent instance
         """
-        content = cls(
+        return cls(
             content=data["content"],
-            importance=data.get("importance", 0.5),
-            memory_type=data.get("memory_type", "knowledge"),
-            tags=data.get("tags", []),
-            metadata=data.get("metadata", {})
+            metadata=data["metadata"]
         )
-        
-        # Restore timestamps
-        if "created_at" in data:
-            content.created_at = datetime.fromisoformat(data["created_at"])
-        if "last_accessed_at" in data and data["last_accessed_at"]:
-            content.last_accessed_at = datetime.fromisoformat(data["last_accessed_at"])
-        
-        # Restore access count
-        content.access_count = data.get("access_count", 0)
-        
-        return content
 
-
-def generate_memory_key(memory_type: str = "memory", prefix: str = "") -> str:
-    """Generate a unique key for a memory
+class RichMemoryContent(MemoryContent):
+    """Enhanced memory content with importance ranking, type, and tagging.
     
-    Args:
-        memory_type: Type of memory for prefixing
-        prefix: Additional prefix for the key
-        
-    Returns:
-        A unique memory key
+    This class extends MemoryContent with features useful for prioritizing
+    and categorizing memories.
     """
-    unique_id = str(uuid.uuid4())
-    if prefix:
-        return f"{prefix}:{memory_type}:{unique_id}"
-    return f"{memory_type}:{unique_id}" 
+    
+    def __init__(
+        self, 
+        content: Any, 
+        importance: float = 0.5, 
+        memory_type: str = "general",
+        tags: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ):
+        """Initialize rich memory content.
+        
+        Args:
+            content: The primary content to store
+            importance: Importance score (0.0 to 1.0)
+            memory_type: Type of memory (e.g., "insight", "fact")
+            tags: Optional list of tags
+            metadata: Optional metadata dictionary
+        """
+        super().__init__(content, metadata)
+        self.importance = max(0.0, min(1.0, importance))  # Clamp to [0, 1]
+        self.memory_type = memory_type
+        self.tags = tags or []
+        
+    def was_accessed(self) -> None:
+        """Update access tracking metadata.
+        
+        This method should be called whenever the memory is retrieved,
+        to keep track of access patterns.
+        """
+        access_count = self.metadata.get("access_count", 0)
+        self.metadata["access_count"] = access_count + 1
+        self.metadata["last_access_time"] = datetime.now().isoformat()
+    
+    def update_importance(self, importance: float) -> None:
+        """Update the importance score.
+        
+        Args:
+            importance: New importance score (0.0 to 1.0)
+        """
+        self.importance = max(0.0, min(1.0, importance))  # Clamp to [0, 1]
+    
+    def add_tags(self, tags: List[str]) -> None:
+        """Add tags to the memory.
+        
+        Args:
+            tags: List of tags to add
+        """
+        for tag in tags:
+            if tag not in self.tags:
+                self.tags.append(tag)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to a dictionary for serialization.
+        
+        Returns:
+            Dictionary representation
+        """
+        data = super().to_dict()
+        data.update({
+            "importance": self.importance,
+            "memory_type": self.memory_type,
+            "tags": self.tags
+        })
+        return data
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "RichMemoryContent":
+        """Create a RichMemoryContent instance from a dictionary.
+        
+        Args:
+            data: Dictionary representation
+            
+        Returns:
+            RichMemoryContent instance
+        """
+        return cls(
+            content=data["content"],
+            importance=data["importance"],
+            memory_type=data["memory_type"],
+            tags=data["tags"],
+            metadata=data["metadata"]
+        )
+
+class EmbeddableMemoryContent(RichMemoryContent):
+    """Memory content with embedding support for semantic search.
+    
+    This class extends RichMemoryContent with embedding capabilities
+    for semantic search operations.
+    """
+    
+    def __init__(
+        self, 
+        content: Any, 
+        embedding: Optional[np.ndarray] = None,
+        importance: float = 0.5, 
+        memory_type: str = "general",
+        tags: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ):
+        """Initialize embeddable memory content.
+        
+        Args:
+            content: The primary content to store
+            embedding: Vector embedding for semantic search
+            importance: Importance score (0.0 to 1.0)
+            memory_type: Type of memory (e.g., "insight", "fact")
+            tags: Optional list of tags
+            metadata: Optional metadata dictionary
+        """
+        super().__init__(
+            content, 
+            importance, 
+            memory_type, 
+            tags, 
+            metadata
+        )
+        self.embedding = embedding
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to a dictionary for serialization.
+        
+        Returns:
+            Dictionary representation
+        """
+        data = super().to_dict()
+        
+        # Convert embedding to list for JSON serialization if present
+        if self.embedding is not None:
+            data["embedding"] = self.embedding.tolist()
+        
+        return data
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "EmbeddableMemoryContent":
+        """Create an EmbeddableMemoryContent instance from a dictionary.
+        
+        Args:
+            data: Dictionary representation
+            
+        Returns:
+            EmbeddableMemoryContent instance
+        """
+        # Convert embedding from list back to numpy array if present
+        embedding = None
+        if "embedding" in data:
+            embedding = np.array(data["embedding"])
+        
+        return cls(
+            content=data["content"],
+            embedding=embedding,
+            importance=data["importance"],
+            memory_type=data["memory_type"],
+            tags=data["tags"],
+            metadata=data["metadata"]
+        ) 

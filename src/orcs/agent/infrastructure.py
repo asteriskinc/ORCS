@@ -12,8 +12,8 @@ from agents.run_context import RunContextWrapper
 from agents.lifecycle import RunHooks, AgentHooks
 from agents.tool import Tool, function_tool
 
-from orcs.memory.system import AgentContext
-from orcs.agent.registry import AgentRegistry, global_registry
+from orcs.context.agent_context import AgentContext
+from orcs.agent.registry import global_registry
 
 # Set up logger with appropriate name
 logger = logging.getLogger("orcs.agent.infrastructure")

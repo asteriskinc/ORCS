@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime
 import numpy as np
 
-from orcs.memory.v2 import (
+from orcs.memory import (
     MemoryContent,
     RichMemoryContent,
     EmbeddableMemoryContent

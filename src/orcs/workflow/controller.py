@@ -6,8 +6,9 @@ import logging
 
 from agents.agent import Agent
 from agents.run import Runner, RunConfig
+from orcs.context.agent_context import AgentContext
 from orcs.workflow.models import Workflow, Task, WorkflowStatus
-from orcs.memory.system import MemorySystem, AgentContext
+from orcs.memory.system import MemorySystem
 from orcs.agent.registry import AgentRegistry, global_registry
 
 # Import hooks for metrics collection
@@ -178,13 +179,6 @@ class WorkflowController:
         """
         logger.debug(f"Planning workflow {workflow.id}")
         
-        # Create context for the planner
-        context = self.memory.create_agent_context(
-            agent_id="planner",
-            workflow_id=workflow.id
-        )
-        logger.debug("Created agent context for planner")
-        
         # Set workflow status to planning
         workflow.status = WorkflowStatus.PLANNING
         
@@ -223,7 +217,6 @@ class WorkflowController:
             result = await Runner.run(
                 starting_agent=self.planner_agent,
                 input=query,
-                context=context,
                 hooks=run_hooks,
                 run_config=run_config
             )

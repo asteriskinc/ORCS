@@ -9,7 +9,7 @@ import logging
 
 import numpy as np
 
-from orcs.memory.v2 import (
+from orcs.memory import (
     MemorySystem,
     MemoryContent, 
     RichMemoryContent, 

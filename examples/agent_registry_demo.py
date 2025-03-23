@@ -14,7 +14,7 @@ from datetime import datetime
 # Load environment variables from .env file
 load_dotenv()
 
-from orcs.memory.system import MemorySystem
+from orcs.memory.system import BasicMemorySystem, MemorySystem
 from orcs.workflow.controller import WorkflowController 
 from orcs.workflow.orchestrator import WorkflowOrchestrator
 from orcs.agent.infrastructure import create_planner_agent
@@ -148,7 +148,7 @@ async def main():
     logger.info(f"Available agent types: {', '.join(agent_types)}")
     
     # Initialize memory system
-    memory = MemorySystem()
+    memory = BasicMemorySystem()
     
     # Create planner agent with registry
     planner = create_planner_agent(model=MODEL, agent_registry=global_registry)

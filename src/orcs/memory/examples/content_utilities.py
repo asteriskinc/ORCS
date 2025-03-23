@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 import uuid
 
-from orcs.memory.v2 import (
+from orcs.memory import (
     MemorySystem,
     MemoryContent, 
     RichMemoryContent, 

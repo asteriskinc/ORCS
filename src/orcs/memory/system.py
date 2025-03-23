@@ -1,110 +1,263 @@
-from typing import Any, Dict, List, Optional
-import re
+from abc import ABC, abstractmethod
+from typing import Any, List, Tuple, Optional, Dict
 import logging
+import re
 
 # Set up logger
 logger = logging.getLogger("orcs.memory.system")
 
-class MemorySystem:
-    """Unified memory system with access controls and scoping"""
+class MemorySystem(ABC):
+    """Unified memory system interface for underlying storage and retrieval"""
     
-    def __init__(self, isolation_provider=None):
-        logger.info("Initializing MemorySystem%s", 
-                    " with isolation provider" if isolation_provider else "")
-        self.data: Dict[str, Any] = {}  # Key-value store
-        self.access_scopes: Dict[str, str] = {}  # Maps keys to their access scopes
-        self.isolation_provider = isolation_provider
-        
-    def _get_isolated_key(self, key: str) -> str:
-        """Get key with isolation prefix if provider exists
+    @abstractmethod
+    def store(self, key: str, value: Any, scope: str = "global") -> None:
+        """Store data with scope information
         
         Args:
-            key: The original key
+            key: The key to store data under
+            value: The data to store
+            scope: The scope to store the data in (default: "global")
+        """
+        pass
+        
+    @abstractmethod
+    def retrieve(self, key: str, scope: str = "global") -> Any:
+        """Retrieve data from specified scope
+        
+        Args:
+            key: The key to retrieve
+            scope: The scope to retrieve from (default: "global")
             
         Returns:
-            Key with isolation prefix if provider exists, original key otherwise
+            The stored value, or None if not found
         """
-        if not self.isolation_provider:
-            return key
+        pass
+        
+    @abstractmethod
+    def delete(self, key: str, scope: str = "global") -> bool:
+        """Delete data from specified scope
+        
+        Args:
+            key: The key to delete
+            scope: The scope to delete from (default: "global")
             
-        isolation_prefix = self.isolation_provider.get_isolation_prefix()
-        isolated_key = f"{isolation_prefix}:{key}"
-        logger.debug("Mapped key '%s' to isolated key '%s'", key, isolated_key)
-        return isolated_key
+        Returns:
+            True if something was deleted, False otherwise
+        """
+        pass
+        
+    @abstractmethod
+    def list_keys(self, pattern: str = "*", scope: str = "global") -> List[str]:
+        """List keys matching a pattern in specified scope
+        
+        Args:
+            pattern: Pattern to match keys against (default: "*" for all keys)
+            scope: The scope to list keys from (default: "global")
+            
+        Returns:
+            List of matching key names
+        """
+        pass
+        
+    @abstractmethod
+    def search(self, query: str, scope: str = "global", limit: int = 5) -> List[Tuple[str, Any, float]]:
+        """Search for content semantically similar to the query
+        
+        Args:
+            query: The search query
+            scope: The scope to search in (default: "global")
+            limit: Maximum number of results to return (default: 5)
+            
+        Returns:
+            List of (key, content, score) tuples
+        """
+        pass
+        
+    @abstractmethod
+    def has_access(self, requesting_scope: str, target_scope: str) -> bool:
+        """Check if a scope has access to data in another scope
+        
+        Access rules might include:
+        - "global" scope is accessible by all
+        - A scope has access to its own data
+        - A parent scope has access to its children's data
+          (e.g., "workflow:123" has access to "workflow:123:task:456")
+        
+        Args:
+            requesting_scope: The scope requesting access
+            target_scope: The scope being accessed
+            
+        Returns:
+            True if access is allowed, False otherwise
+        """
+        pass
+
+
+class BasicMemorySystem(MemorySystem):
+    """Simple in-memory implementation of the memory system"""
+    
+    def __init__(self):
+        """Initialize an in-memory storage system"""
+        logger.info("Initializing BasicMemorySystem")
+        self.data = {}  # Dict[scope][key] = value
         
     def store(self, key: str, value: Any, scope: str = "global") -> None:
         """Store data with scope information
         
         Args:
-            key: The key to store the value under
-            value: The value to store
+            key: The key to store data under
+            value: The data to store
             scope: The scope to store the data in (default: "global")
         """
-        isolated_key = self._get_isolated_key(key)
-        self.data[isolated_key] = value
-        self.access_scopes[isolated_key] = scope
-        logger.debug("Stored value for key '%s' in scope '%s'", key, scope)
+        if scope not in self.data:
+            self.data[scope] = {}
+        self.data[scope][key] = value
+        logger.debug("Stored value at key '%s' in scope '%s'", key, scope)
         
-    def retrieve(self, key: str, requesting_scope: str) -> Any:
-        """Retrieve data if the requesting scope has access
+    def retrieve(self, key: str, scope: str = "global") -> Any:
+        """Retrieve data from specified scope
         
         Args:
             key: The key to retrieve
-            requesting_scope: The scope requesting access
+            scope: The scope to retrieve from (default: "global")
             
         Returns:
-            The stored value if accessible, None otherwise
-            
-        Raises:
-            KeyError: If the key doesn't exist
-            PermissionError: If the requesting scope doesn't have access
+            The stored value, or None if not found
         """
-        isolated_key = self._get_isolated_key(key)
-        if isolated_key not in self.data:
-            logger.warning("Key '%s' not found in memory", key)
-            raise KeyError(f"Key '{key}' not found in memory")
-            
-        target_scope = self.access_scopes[isolated_key]
-        if not self._has_access(requesting_scope, target_scope):
-            logger.warning("Scope '%s' doesn't have access to data in scope '%s'", 
-                           requesting_scope, target_scope)
-            raise PermissionError(f"Scope '{requesting_scope}' doesn't have access to data in scope '{target_scope}'")
-            
-        logger.debug("Retrieved value for key '%s' from scope '%s' requested by scope '%s'", 
-                     key, target_scope, requesting_scope)
-        return self.data[isolated_key]
+        if scope not in self.data or key not in self.data[scope]:
+            logger.debug("Key '%s' not found in scope '%s'", key, scope)
+            return None
+        logger.debug("Retrieved value from key '%s' in scope '%s'", key, scope)
+        return self.data[scope][key]
         
-    def list_keys(self, scope_pattern: str = "*") -> List[str]:
-        """List all keys matching a scope pattern
+    def delete(self, key: str, scope: str = "global") -> bool:
+        """Delete data from specified scope
         
         Args:
-            scope_pattern: A pattern to match scopes (default: "*" for all scopes)
+            key: The key to delete
+            scope: The scope to delete from (default: "global")
             
         Returns:
-            A list of keys in matching scopes
+            True if something was deleted, False otherwise
         """
-        logger.debug("Listing keys with scope pattern '%s'", scope_pattern)
-        # Convert glob pattern to regex
-        regex_pattern = "^" + scope_pattern.replace("*", ".*") + "$"
-        pattern = re.compile(regex_pattern)
+        if scope not in self.data or key not in self.data[scope]:
+            logger.debug("Cannot delete: key '%s' not found in scope '%s'", key, scope)
+            return False
+        del self.data[scope][key]
+        logger.debug("Deleted key '%s' from scope '%s'", key, scope)
+        return True
         
-        matching_keys = []
-        for isolated_key, scope in self.access_scopes.items():
-            if pattern.match(scope):
-                # If using isolation, strip the isolation prefix before returning keys
-                if self.isolation_provider:
-                    prefix = self.isolation_provider.get_isolation_prefix()
-                    if isolated_key.startswith(f"{prefix}:"):
-                        # Return the original key without the isolation prefix
-                        original_key = isolated_key[len(prefix)+1:]
-                        matching_keys.append(original_key)
+    def list_keys(self, pattern: str = "*", scope: str = "global") -> List[str]:
+        """List keys matching a pattern in specified scope
+        
+        Args:
+            pattern: Pattern to match keys against (default: "*" for all keys)
+            scope: The scope to list keys from (default: "global")
+            
+        Returns:
+            List of matching key names
+        """
+        if scope not in self.data:
+            logger.debug("No keys found in scope '%s'", scope)
+            return []
+            
+        # Simple pattern matching - in a real implementation you'd use regex or glob
+        if pattern == "*":
+            keys = list(self.data[scope].keys())
+        else:
+            # Convert glob pattern to regex
+            regex_pattern = "^" + pattern.replace("*", ".*") + "$"
+            regex = re.compile(regex_pattern)
+            keys = [k for k in self.data[scope].keys() if regex.match(k)]
+            
+        logger.debug("Found %d keys matching pattern '%s' in scope '%s'", 
+                    len(keys), pattern, scope)
+        return keys
+        
+    def search(self, query: str, scope: str = "global", limit: int = 5) -> List[Tuple[str, Any, float]]:
+        """Basic search implementation that checks for keyword presence
+        
+        Args:
+            query: The search query
+            scope: The scope to search in (default: "global")
+            limit: Maximum number of results to return (default: 5)
+            
+        Returns:
+            List of (key, content, score) tuples
+        """
+        if scope not in self.data:
+            logger.debug("No data found in scope '%s' for search", scope)
+            return []
+            
+        results = []
+        query_lower = query.lower()
+        for key, value in self.data[scope].items():
+            # Convert value to string if possible for simple text matching
+            try:
+                value_str = str(value) if not isinstance(value, (bytes, bytearray)) else ""
+            except:
+                value_str = ""
+                
+            # Check if query appears in key or value
+            key_match = query_lower in key.lower()
+            value_match = query_lower in value_str.lower()
+            
+            if key_match or value_match:
+                # Simple relevance score based on exact matches
+                if query_lower == key.lower() or query_lower == value_str.lower():
+                    score = 1.0  # Exact match
+                elif key.lower().startswith(query_lower) or value_str.lower().startswith(query_lower):
+                    score = 0.9  # Starts with match
                 else:
-                    matching_keys.append(isolated_key)
+                    score = 0.7  # Contains match
+                
+                results.append((key, value, score))
+                
+        # Sort by score (highest first) and limit results
+        results.sort(key=lambda x: x[2], reverse=True)
+        logger.debug("Found %d matches for query '%s' in scope '%s'", 
+                    len(results[:limit]), query, scope)
+        return results[:limit]
         
-        logger.debug("Found %d keys matching scope pattern '%s'", len(matching_keys), scope_pattern)
-        return matching_keys
+    def has_access(self, requesting_scope: str, target_scope: str) -> bool:
+        """Check if a scope has access to data in another scope
         
-    def _has_access(self, requesting_scope: str, target_scope: str) -> bool:
+        This basic implementation only allows access to:
+        - The "global" scope (accessible by all)
+        - The same scope (a scope can access its own data)
+        
+        Args:
+            requesting_scope: The scope requesting access
+            target_scope: The scope being accessed
+            
+        Returns:
+            True if access is allowed, False otherwise
+        """
+        # Global scope is accessible by all
+        if target_scope == "global":
+            return True
+            
+        # Same scope has access
+        if requesting_scope == target_scope:
+            return True
+            
+        # No hierarchical access in the basic implementation
+        return False
+
+
+class ScopedAccessMemorySystem(BasicMemorySystem):
+    """Memory system with hierarchical scope access controls
+    
+    This extended memory system adds v1-style access control:
+    - "global" scope is accessible by all
+    - A scope has access to its own data
+    - A parent scope has access to its children's data
+    
+    This is useful for maintaining hierarchical workflows where a higher-level
+    scope (like a workflow) needs access to data in child scopes (like tasks).
+    """
+    
+    def has_access(self, requesting_scope: str, target_scope: str) -> bool:
         """Check if a scope has access to data in another scope
         
         Access rules:
@@ -132,113 +285,68 @@ class MemorySystem:
         has_access = target_scope.startswith(f"{requesting_scope}:")
         logger.debug("Access check: %s -> %s = %s", requesting_scope, target_scope, has_access)
         return has_access
-        
-    def create_agent_context(self, agent_id: str, workflow_id: str) -> 'AgentContext':
-        """Create a context object for an agent
-        
-        Args:
-            agent_id: The ID of the agent
-            workflow_id: The ID of the workflow
-            
-        Returns:
-            An AgentContext object
-        """
-        scope = f"workflow:{workflow_id}:agent:{agent_id}"
-        logger.info("Creating agent context for agent '%s' in workflow '%s' with scope '%s'", 
-                   agent_id, workflow_id, scope)
-        return AgentContext(self, agent_id, workflow_id, scope)
-
-
-class AgentContext:
-    """Context object for agents to interact with memory"""
     
-    def __init__(self, memory_system: MemorySystem, agent_id: str, 
-                workflow_id: str, scope: str):
-        """Initialize an agent context
+    def retrieve(self, key: str, scope: str = "global") -> Any:
+        """Retrieve data with hierarchical scope access controls
         
-        Args:
-            memory_system: The memory system to use
-            agent_id: The ID of the agent
-            workflow_id: The ID of the workflow
-            scope: The scope for this agent's memory
-        """
-        logger.debug("Initializing AgentContext for agent '%s' in workflow '%s'", 
-                    agent_id, workflow_id)
-        self.memory = memory_system
-        self.agent_id = agent_id
-        self.workflow_id = workflow_id
-        self.scope = scope
-        
-    def store(self, key: str, value: Any, sub_scope: Optional[str] = None) -> None:
-        """Store data in agent's scope
-        
-        Args:
-            key: The key to store the value under
-            value: The value to store
-            sub_scope: Optional sub-scope within the agent's scope
-        """
-        if sub_scope:
-            full_scope = f"{self.scope}:{sub_scope}"
-        else:
-            full_scope = self.scope
-        
-        logger.debug("Agent '%s' storing key '%s'%s", 
-                    self.agent_id, key, f" in sub-scope '{sub_scope}'" if sub_scope else "")
-        self.memory.store(key, value, full_scope)
-        
-    def retrieve(self, key: str) -> Any:
-        """Retrieve data accessible to the agent
+        This method first checks the specified scope directly.
+        If not found and the scope is "global", it returns None.
+        Otherwise, it checks child scopes that the requesting scope has access to.
         
         Args:
             key: The key to retrieve
+            scope: The scope to retrieve from (default: "global")
             
         Returns:
-            The stored value
-            
-        Raises:
-            KeyError: If the key doesn't exist
-            PermissionError: If the agent doesn't have access
+            The stored value, or None if not found or not accessible
         """
-        logger.debug("Agent '%s' retrieving key '%s'", self.agent_id, key)
-        return self.memory.retrieve(key, self.scope)
-        
-    def retrieve_global(self, key: str) -> Any:
-        """Retrieve global data
+        # First try direct access in the provided scope
+        value = super().retrieve(key, scope)
+        if value is not None:
+            return value
+            
+        # If not in global scope, try to find in child scopes
+        if scope != "global":
+            # Look through all stored scopes for ones the requester can access
+            for data_scope in self.data.keys():
+                # Skip if we already checked this scope or don't have access
+                if data_scope == scope or not self.has_access(scope, data_scope):
+                    continue
+                    
+                if key in self.data[data_scope]:
+                    logger.debug("Found key '%s' in child scope '%s' for requester '%s'", 
+                                key, data_scope, scope)
+                    return self.data[data_scope][key]
+                    
+        return None
+    
+    def list_keys(self, pattern: str = "*", scope: str = "global", include_child_scopes: bool = False) -> List[str]:
+        """List keys matching a pattern in specified scope
         
         Args:
-            key: The key to retrieve
+            pattern: Pattern to match keys against (default: "*" for all keys)
+            scope: The scope to list keys from (default: "global")
+            include_child_scopes: Whether to include keys from child scopes
             
         Returns:
-            The stored global value
-            
-        Raises:
-            KeyError: If the key doesn't exist
+            List of matching key names
         """
-        logger.debug("Agent '%s' retrieving global key '%s'", self.agent_id, key)
-        try:
-            return self.memory.retrieve(key, "global")
-        except PermissionError:
-            # This shouldn't happen for global data, but just in case
-            logger.warning("Global key '%s' not accessible to agent '%s'", key, self.agent_id)
-            raise KeyError(f"Global key '{key}' not accessible")
+        # Get keys from the direct scope
+        keys = super().list_keys(pattern, scope)
+        
+        # If not including child scopes, return just these keys
+        if not include_child_scopes:
+            return keys
             
-    def list_keys(self, include_global: bool = True) -> List[str]:
-        """List keys accessible to this agent
-        
-        Args:
-            include_global: Whether to include global keys
+        # Otherwise, collect keys from child scopes
+        for data_scope in self.data.keys():
+            # Skip if we already included this scope or don't have access
+            if data_scope == scope or not self.has_access(scope, data_scope):
+                continue
+                
+            # Get matching keys from this child scope
+            child_keys = super().list_keys(pattern, data_scope)
+            keys.extend(child_keys)
             
-        Returns:
-            A list of accessible keys
-        """
-        logger.debug("Agent '%s' listing keys (include_global=%s)", self.agent_id, include_global)
-        # Get keys in agent's scope
-        agent_keys = self.memory.list_keys(self.scope)
-        
-        if include_global:
-            # Get global keys
-            global_keys = self.memory.list_keys("global")
-            # Combine and remove duplicates
-            return list(set(agent_keys + global_keys))
-        
-        return agent_keys 
+        # Return deduplicated keys
+        return list(set(keys)) 
