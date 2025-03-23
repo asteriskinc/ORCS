@@ -8,8 +8,14 @@ from agents.agent import Agent
 from agents.run import Runner, RunConfig
 from orcs.workflow.models import Workflow, Task, WorkflowStatus
 from orcs.memory.system import MemorySystem, AgentContext
-from orcs.agent.infrastructure import ORCSRunHooks, ORCSAgentHooks
 from orcs.agent.registry import AgentRegistry, global_registry
+
+# Import hooks for metrics collection
+from orcs.metrics import (
+    MetricsAgentHooks,
+    MetricsRunHooks
+)
+
 # Import agent factories to ensure they are registered
 import orcs.agent.factories
 
@@ -18,7 +24,17 @@ logger = logging.getLogger("orcs.workflow.controller")
 
 
 class WorkflowController:
-    """Central controller for workflow operations"""
+    """Central controller for workflow creation and planning
+    
+    The WorkflowController is responsible for:
+    - Creating workflows from user queries
+    - Planning the tasks within workflows using the planner agent
+    - Managing workflow metadata and state
+    
+    Note: 
+        To execute workflows, use the WorkflowOrchestrator directly.
+        The controller only creates and plans workflows, it does not execute them.
+    """
     
     def __init__(self, 
                 planner_agent: Agent[AgentContext],
@@ -47,7 +63,7 @@ class WorkflowController:
         else:
             logger.warning("No agent types registered in the agent registry")
         
-    async def create_workflow(self, query: str, context_provider=None) -> str:
+    async def create_workflow(self, query: str, context_provider = None) -> str:
         """Create a new workflow from a user query
         
         Args:
@@ -56,6 +72,10 @@ class WorkflowController:
             
         Returns:
             The ID of the created workflow
+            
+        Note:
+            This method creates and plans the workflow, but does not execute it.
+            To execute, use the WorkflowOrchestrator directly.
         """
         logger.info("Creating workflow for query: '%s'", query)
         
@@ -149,39 +169,7 @@ class WorkflowController:
             
         logger.debug(f"Listed {len(workflows_dict)} workflows")
         return workflows_dict
-    
-    async def execute_workflow(self, workflow_id: str) -> bool:
-        """Execute a workflow
-        
-        Args:
-            workflow_id: The ID of the workflow to execute
             
-        Returns:
-            True if execution started successfully, False otherwise
-            
-        Raises:
-            PermissionError: If permission check fails
-        """
-        logger.info(f"Executing workflow {workflow_id}")
-        
-        # Check permissions if checker exists
-        if self.permission_checker and not self.permission_checker.check_permission('execute', workflow_id):
-            logger.warning(f"Permission denied to execute workflow {workflow_id}")
-            raise PermissionError(f"Permission denied to execute workflow {workflow_id}")
-            
-        workflow = self.workflows.get(workflow_id)
-        if not workflow:
-            logger.warning(f"Workflow {workflow_id} not found")
-            return False
-            
-        # TODO: Workflow execution would be implemented here
-        # For now, just update the status
-        workflow.status = WorkflowStatus.RUNNING
-        workflow.started_at = datetime.now().isoformat()
-        logger.info(f"Workflow {workflow_id} status set to {workflow.status.value}")
-        
-        return True
-        
     async def _plan_workflow(self, workflow: Workflow) -> None:
         """Use the planner agent to create tasks for the workflow
         
@@ -209,19 +197,24 @@ class WorkflowController:
                 # TODO: Reference of user, maybe make it more general
                 query = f"{query}\n\nUser Context:\n{context_str}"
             
-            # Set up hooks for memory integration
-            logger.debug("Setting up hooks for memory integration")
-            agent_hooks = ORCSAgentHooks(self.memory, workflow.id)
-            run_hooks = ORCSRunHooks(self.memory, workflow.id)
+            # Set up hooks for metrics collection
+            logger.debug("Setting up hooks for metrics collection")
+            agent_hooks = MetricsAgentHooks(workflow_id=workflow.id)
+            run_hooks = MetricsRunHooks(workflow_id=workflow.id)
             
             # Attach agent hooks to the planner agent
+            logger.debug("Attaching hooks to planner agent")
             self.planner_agent.hooks = agent_hooks
             
             # Configure run
             run_config = RunConfig(
                 workflow_name=f"Workflow Planning: {workflow.id}",
                 model_settings=self.planner_agent.model_settings,
-                tracing_disabled=False
+                tracing_disabled=False,
+                trace_metadata={
+                    "workflow_id": workflow.id,
+                    "operation": "planning"
+                }
             )
             logger.debug("Configured run settings")
             
@@ -231,8 +224,8 @@ class WorkflowController:
                 starting_agent=self.planner_agent,
                 input=query,
                 context=context,
-                run_config=run_config,
-                hooks=run_hooks
+                hooks=run_hooks,
+                run_config=run_config
             )
             logger.debug("Planner agent execution completed")
             
@@ -271,11 +264,17 @@ class WorkflowController:
                     task = workflow.get_task(task_id)
                     
                     # Directly access dependencies from Pydantic model
-                    if task_data.dependencies:
+                    if hasattr(task_data, 'dependencies') and task_data.dependencies:
                         for dep_idx in task_data.dependencies:
                             if isinstance(dep_idx, int) and 0 <= dep_idx < len(tasks_data):
-                                task.dependencies.append(task_id_map[dep_idx])
-                                logger.debug(f"Added dependency {task_id_map[dep_idx]} to task {task_id}")
+                                # Skip self-dependencies
+                                if task_id_map[dep_idx] != task_id:
+                                    task.dependencies.append(task_id_map[dep_idx])
+                                    logger.debug(f"Added dependency {task_id_map[dep_idx]} to task {task_id}")
+                                else:
+                                    logger.warning(f"Ignoring self-dependency for task {task_id}")
+                            else:
+                                logger.warning(f"Invalid dependency index {dep_idx} for task {task_id}")
                 
                 # Validate the dependency graph for cycles
                 has_cycles, cycle_path = self._detect_dependency_cycles(workflow)

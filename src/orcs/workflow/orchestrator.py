@@ -1,14 +1,24 @@
 import asyncio
 import logging
-from typing import Dict, List, Any, Optional, Callable
+from typing import Dict, List, Any, Optional, Callable, Type
 from datetime import datetime
-import time
+from pydantic import BaseModel
 
 from agents.agent import Agent
 from agents.run import Runner, RunConfig
 from orcs.workflow.models import Workflow, WorkflowStatus, Task, TaskStatus
 from orcs.agent.registry import AgentRegistry, global_registry
-from orcs.agent.infrastructure import ORCSRunHooks, ORCSAgentHooks
+
+# Import metrics hooks
+from orcs.metrics import (
+    MetricsAgentHooks,
+    MetricsRunHooks
+)
+
+# Import memory system
+from orcs.memory import (
+    get_default_memory_system
+)
 
 # Set up logger
 logger = logging.getLogger("orcs.workflow.orchestrator")
@@ -18,22 +28,18 @@ class WorkflowOrchestrator:
     """Orchestrates the execution of workflows"""
     
     def __init__(self, 
-                memory_system,
-                agent_registry: Optional[AgentRegistry] = None,
-                resource_manager=None,
-                telemetry_collector=None):
+                memory_system=None,
+                agent_registry: Optional[AgentRegistry] = None):
         """Initialize the workflow orchestrator
         
         Args:
-            memory_system: The memory system to use
+            memory_system: The memory system to use (default: global default)
             agent_registry: Registry of available agents (uses global registry if None)
-            resource_manager: Optional resource manager for resource allocation
-            telemetry_collector: Optional telemetry collector for metrics and events
         """
-        self.memory = memory_system
+        # Get the default memory system if none provided
+        self.memory = memory_system or get_default_memory_system()
+        
         self.agent_registry = agent_registry or global_registry
-        self.resource_manager = resource_manager
-        self.telemetry_collector = telemetry_collector
         
         # Log available agent types
         agent_types = self.agent_registry.list_agent_types()
@@ -55,35 +61,11 @@ class WorkflowOrchestrator:
         """
         logger.info("Starting execution of workflow '%s'", workflow.id)
         
-        # Allocate resources if manager is provided
-        if self.resource_manager:
-            logger.debug("Allocating resources for workflow '%s'", workflow.id)
-            resources_allocated = await self.resource_manager.allocate_resources(
-                workflow.id, workflow.metadata.get("resource_requirements", {})
-            )
-            if not resources_allocated:
-                logger.error("Failed to allocate resources for workflow '%s'", workflow.id)
-                workflow.status = WorkflowStatus.FAILED
-                workflow.metadata["error"] = "Failed to allocate resources"
-                return self._create_output(workflow)
-        
         try:
             # Initialize workflow execution
             workflow.status = WorkflowStatus.RUNNING
             workflow.started_at = datetime.now().isoformat()
             logger.info("Workflow '%s' started at %s", workflow.id, workflow.started_at)
-            
-            # Record workflow started event
-            if self.telemetry_collector:
-                logger.debug("Recording workflow started event")
-                await self.telemetry_collector.record_event(
-                    event_type='workflow_started',
-                    resource_id=workflow.id,
-                    metadata={
-                        'query': workflow.query,
-                        'timestamp': workflow.started_at
-                    }
-                )
             
             # Main execution loop
             while True:
@@ -99,18 +81,6 @@ class WorkflowOrchestrator:
                         logger.info("All tasks completed for workflow '%s'", workflow.id)
                         workflow.status = WorkflowStatus.COMPLETED
                         workflow.completed_at = datetime.now().isoformat()
-                        
-                        # Record workflow completed event
-                        if self.telemetry_collector:
-                            logger.debug("Recording workflow completed event")
-                            await self.telemetry_collector.record_event(
-                                event_type='workflow_completed',
-                                resource_id=workflow.id,
-                                metadata={
-                                    'duration': time.time() - datetime.fromisoformat(workflow.started_at).timestamp(),
-                                    'timestamp': workflow.completed_at
-                                }
-                            )
                         break
                     
                     # If we can't execute any tasks but not all are completed,
@@ -119,18 +89,6 @@ class WorkflowOrchestrator:
                         logger.error("Workflow '%s' execution deadlocked", workflow.id)
                         workflow.status = WorkflowStatus.FAILED
                         workflow.metadata["error"] = "Workflow execution deadlocked"
-                        
-                        # Record workflow failed event
-                        if self.telemetry_collector:
-                            logger.debug("Recording workflow failed event")
-                            await self.telemetry_collector.record_event(
-                                event_type='workflow_failed',
-                                resource_id=workflow.id,
-                                metadata={
-                                    'error': "Workflow execution deadlocked",
-                                    'timestamp': datetime.now().isoformat()
-                                }
-                            )
                         break
                     
                     # Otherwise, wait a bit and check again
@@ -154,27 +112,10 @@ class WorkflowOrchestrator:
             workflow.status = WorkflowStatus.FAILED
             workflow.metadata["error"] = str(e)
             
-            # Record workflow failed event
-            if self.telemetry_collector:
-                logger.debug("Recording workflow failed event")
-                await self.telemetry_collector.record_event(
-                    event_type='workflow_failed',
-                    resource_id=workflow.id,
-                    metadata={
-                        'error': str(e),
-                        'timestamp': datetime.now().isoformat()
-                    }
-                )
-            
             return self._create_output(workflow)
-            
-        finally:
-            # Always release resources if manager exists
-            if self.resource_manager:
-                logger.debug("Releasing resources for workflow '%s'", workflow.id)
-                await self.resource_manager.release_resources(workflow.id)
     
-    async def _execute_task(self, workflow: Workflow, task: Task, status_callback: Optional[Callable] = None) -> None:
+    async def _execute_task(self, workflow: Workflow, task: Task, 
+                             status_callback: Optional[Callable] = None) -> None:
         """Execute a single task using the Agent SDK
         
         Args:
@@ -183,151 +124,182 @@ class WorkflowOrchestrator:
             status_callback: Optional callback for status updates
         """
         logger.info("Executing task '%s' (%s) in workflow '%s'", 
-                   task.title, task.id, workflow.id)
+                   task.id, task.agent_id, workflow.id)
         
         # Update task status
         task.status = TaskStatus.RUNNING
         task.started_at = datetime.now().isoformat()
         
-        # Notify status if callback provided
+        # Notify callback if provided
         if status_callback:
-            logger.debug("Notifying task started via callback")
-            await status_callback({
-                "workflow_id": workflow.id,
-                "task_id": task.id,
-                "status": task.status.value,
-                "message": f"Started task: {task.title}"
-            })
-        
-        # Record task started event
-        if self.telemetry_collector:
-            logger.debug("Recording task started event")
-            await self.telemetry_collector.record_event(
-                event_type='task_started',
-                resource_id=task.id,
-                metadata={
-                    'workflow_id': workflow.id,
-                    'agent_id': task.agent_id,
-                    'timestamp': task.started_at
-                }
-            )
+            await status_callback(workflow)
         
         try:
-            # Get the agent for this task
-            logger.debug("Getting agent '%s' from registry", task.agent_id)
-            agent = self.agent_registry.get_agent(task.agent_id)
+            # Look up the agent from the registry
+            agent_instance = self.agent_registry.get_agent(task.agent_id)
+            if not agent_instance:
+                logger.error("Agent type '%s' not found in registry", task.agent_id)
+                task.status = TaskStatus.FAILED
+                task.metadata["error"] = f"Agent type '{task.agent_id}' not found"
+                return
             
-            # Create agent context
-            logger.debug("Creating agent context for agent '%s'", task.agent_id)
-            agent_context = self.memory.create_agent_context(
-                agent_id=task.agent_id,
-                workflow_id=workflow.id
+            # Get the output type from agent
+            output_schema = getattr(agent_instance, 'output_type', None)
+            
+            # Set up hooks
+            agent_hooks = MetricsAgentHooks(workflow_id=workflow.id)
+            run_hooks = MetricsRunHooks(workflow_id=workflow.id)
+            
+            # Configure the run
+            run_config = RunConfig(
+                workflow_name=f"Task execution: {task.id}",
+                trace_metadata={
+                    "workflow_id": workflow.id,
+                    "task_id": task.id,
+                    "agent_id": task.agent_id
+                }
             )
             
-            # Set up hooks for memory integration
-            logger.debug("Setting up hooks for memory integration")
-            agent_hooks = ORCSAgentHooks(self.memory, workflow.id)
-            run_hooks = ORCSRunHooks(self.memory, workflow.id)
+            # Execute the agent with the Agent SDK
+            logger.info("Running agent '%s' for task '%s'", 
+                      task.agent_id, task.id)
             
-            # Attach agent hooks to the agent
-            agent.hooks = agent_hooks
+            # Get input from task or previous task outputs
+            task_input = await self._get_task_input(workflow, task)
             
-            # Execute the agent using the AgentSDK Runner
-            logger.debug("Executing agent '%s' with AgentSDK Runner", task.agent_id)
-            result = await Runner.run(
-                starting_agent=agent,
-                input=task.description,
-                context=agent_context,
-                run_config=RunConfig(
-                    workflow_name=f"Task {task.id} in Workflow {workflow.id}",
-                    tracing_disabled=False
-                ),
+            # Execute the agent
+            run_result = await Runner.run(
+                starting_agent=agent_instance,
+                input=task_input,
+                run_config=run_config,
                 hooks=run_hooks
             )
             
-            # Store the result
-            logger.debug("Storing task result")
-            task.result = result.final_output
-            workflow.results[task.id] = result.final_output
-            
-            # Update task status
-            task.status = TaskStatus.COMPLETED
-            task.completed_at = datetime.now().isoformat()
+            # Process the result
             logger.info("Task '%s' completed successfully", task.id)
             
-            # Record task completed event
-            if self.telemetry_collector:
-                logger.debug("Recording task completed event")
-                await self.telemetry_collector.record_event(
-                    event_type='task_completed',
-                    resource_id=task.id,
-                    metadata={
-                        'workflow_id': workflow.id,
-                        'duration': time.time() - datetime.fromisoformat(task.started_at).timestamp(),
-                        'timestamp': task.completed_at
-                    }
-                )
+            # Parse the result using the output schema if available
+            if output_schema and issubclass(output_schema, BaseModel):
+                try:
+                    # If the result is already a dictionary, use it directly
+                    if isinstance(run_result.final_output, dict):
+                        parsed_output = output_schema(**run_result.final_output)
+                        task.result = parsed_output.model_dump()
+                        logger.info(
+                            f"Successfully parsed dictionary output for task '{task.id}' into {output_schema.__name__}"
+                        )
+                    else:
+                        # If the result is a string, log a warning
+                        logger.warning(
+                            f"Agent output for task '{task.id}' is not a dictionary. "
+                            f"Expected format matching {output_schema.__name__}. "
+                            f"Storing raw output instead."
+                        )
+                        task.result = run_result.final_output
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to parse agent output using schema {output_schema.__name__}: {str(e)}. "
+                        f"Storing raw output instead."
+                    )
+                    task.result = run_result.final_output
+            else:
+                # If no output schema is defined, store the raw output
+                task.result = run_result.final_output
             
-            # Notify status if callback provided
+            task.status = TaskStatus.COMPLETED
+            task.completed_at = datetime.now().isoformat()
+            
+            # Notify callback if provided
             if status_callback:
-                logger.debug("Notifying task completed via callback")
-                await status_callback({
-                    "workflow_id": workflow.id,
-                    "task_id": task.id,
-                    "status": task.status.value,
-                    "message": f"Completed task: {task.title}"
-                })
+                await status_callback(workflow)
                 
         except Exception as e:
-            # Update task status
-            logger.error("Task '%s' failed: %s", task.id, str(e), exc_info=True)
+            logger.exception("Error executing task '%s': %s", task.id, str(e))
             task.status = TaskStatus.FAILED
-            task.result = {"error": str(e)}
+            task.metadata["error"] = str(e)
             
-            # Record task failed event
-            if self.telemetry_collector:
-                logger.debug("Recording task failed event")
-                await self.telemetry_collector.record_event(
-                    event_type='task_failed',
-                    resource_id=task.id,
-                    metadata={
-                        'workflow_id': workflow.id,
-                        'error': str(e),
-                        'timestamp': datetime.now().isoformat()
-                    }
-                )
-            
-            # Notify status if callback provided
+            # Notify callback if provided
             if status_callback:
-                logger.debug("Notifying task failed via callback")
-                await status_callback({
-                    "workflow_id": workflow.id,
-                    "task_id": task.id,
-                    "status": task.status.value,
-                    "message": f"Failed task: {task.title} - {str(e)}"
-                })
+                await status_callback(workflow)
+    
+    async def _get_task_input(self, workflow: Workflow, task: Task) -> str:
+        """Get the input for a task
+        
+        The input can come either directly from the task's input_data or
+        from the outputs of previous tasks that this task depends on.
+        
+        Args:
+            workflow: The workflow containing the task
+            task: The task to get input for
+            
+        Returns:
+            The task input as a string
+        """
+        # Check for custom input in task metadata
+        if task.metadata.get("input_data"):
+            logger.info("Using custom input data for task '%s'", task.id)
+            return task.metadata.get("input_data")
+            
+        # Build input from task description and dependencies
+        input_parts = []
+        
+        if task.title:
+            input_parts.append(f"Task: {task.title}")
+        if task.description:
+            input_parts.append(f"Description: {task.description}")
+            
+        # Add outputs from dependencies
+        if task.dependencies:
+            logger.info("Adding outputs from %d dependencies to task input", len(task.dependencies))
+            input_parts.append("\nPrevious task outputs:")
+            for dep_id in task.dependencies:
+                dep_task = workflow.get_task(dep_id)
+                if dep_task.status == TaskStatus.COMPLETED:
+                    if dep_task.result:
+                        input_parts.append(f"Output from {dep_task.agent_id} (Task {dep_id}):")
+                        # Convert result to string if it's not already a string
+                        result_str = str(dep_task.result)
+                        input_parts.append(result_str)
+                        input_parts.append("---")
+        
+        # If we didn't find any inputs, use a generic prompt
+        if not input_parts:
+            logger.warning("No input sources found for task '%s', using generic prompt", task.id)
+            return f"Please perform task '{task.agent_id}' for workflow '{workflow.id}'."
+            
+        # Join input parts with newlines
+        return "\n".join(input_parts)
     
     def _create_output(self, workflow: Workflow) -> Dict[str, Any]:
         """Create the final output for a workflow
         
         Args:
-            workflow: The executed workflow
+            workflow: The workflow to create output for
             
         Returns:
-            Dictionary with the workflow execution results
+            Dict containing workflow results
         """
-        logger.debug("Creating final output for workflow '%s'", workflow.id)
-        return {
+        # Gather individual task results
+        task_results = {}
+        for task_id, task in workflow.tasks.items():
+            task_results[task_id] = {
+                "id": task_id,
+                "agent_id": task.agent_id,
+                "status": task.status.value,
+                "result": task.result,
+                "start_time": task.started_at,
+                "end_time": task.completed_at
+            }
+        
+        # Build the output structure
+        output = {
             "workflow_id": workflow.id,
             "status": workflow.status.value,
-            "results": workflow.results,
-            "metadata": {
-                "title": workflow.title,
-                "description": workflow.description,
-                "query": workflow.query,
-                "created_at": workflow.created_at,
-                "started_at": workflow.started_at,
-                "completed_at": workflow.completed_at,
-                "error": workflow.metadata.get("error")
-            }
-        } 
+            "query": workflow.query,
+            "started_at": workflow.started_at,
+            "completed_at": getattr(workflow, "completed_at", None),
+            "error": workflow.metadata.get("error"),
+            "tasks": task_results
+        }
+        
+        return output 

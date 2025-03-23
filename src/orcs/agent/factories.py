@@ -7,7 +7,7 @@ from agents.tool import function_tool
 from agents.run_context import RunContextWrapper
 
 from orcs.agent.registry import register_agent_type, global_registry
-from orcs.memory.system import AgentContext
+from orcs.context.metrics_context import MetricsAgentContext
 
 # Set up logger
 logger = logging.getLogger("orcs.agent.factories")
@@ -45,7 +45,7 @@ class DataOutput(BaseModel):
 def research_agent(model: str = DEFAULT_MODEL, 
                  memory_system=None, 
                  workflow_id: Optional[str] = None, 
-                 config_provider=None) -> Agent[AgentContext]:
+                 config_provider=None) -> Agent[MetricsAgentContext]:
     """Create a research agent specialized in gathering and analyzing information.
     
     Args:
@@ -88,7 +88,7 @@ def research_agent(model: str = DEFAULT_MODEL,
     """
     
     @function_tool
-    def get_research_context(context: RunContextWrapper[AgentContext], workflow_id: str, query: str) -> str:
+    def get_research_context(context: RunContextWrapper[MetricsAgentContext], workflow_id: str, query: str) -> str:
         """Retrieve research context from memory
         
         Args:
@@ -118,7 +118,7 @@ def research_agent(model: str = DEFAULT_MODEL,
         return "No memory system available for research context."
     
     # Create and return the agent
-    return Agent[AgentContext](
+    return Agent[MetricsAgentContext](
         name="research_agent",
         instructions=instructions,
         model=model,
@@ -132,7 +132,7 @@ def research_agent(model: str = DEFAULT_MODEL,
 def writing_agent(model: str = DEFAULT_MODEL, 
                 memory_system=None, 
                 workflow_id: Optional[str] = None,
-                config_provider=None) -> Agent[AgentContext]:
+                config_provider=None) -> Agent[MetricsAgentContext]:
     """Create a writing agent specialized in content creation.
     
     Args:
@@ -175,7 +175,7 @@ def writing_agent(model: str = DEFAULT_MODEL,
     """
     
     @function_tool
-    def get_writing_materials(context: RunContextWrapper[AgentContext], workflow_id: str, content_type: str) -> str:
+    def get_writing_materials(context: RunContextWrapper[MetricsAgentContext], workflow_id: str, content_type: str) -> str:
         """Retrieve writing materials from memory
         
         Args:
@@ -205,7 +205,7 @@ def writing_agent(model: str = DEFAULT_MODEL,
         return "No memory system available for writing materials."
     
     # Create and return the agent
-    return Agent[AgentContext](
+    return Agent[MetricsAgentContext](
         name="writing_agent",
         instructions=instructions,
         model=model,
@@ -219,7 +219,7 @@ def writing_agent(model: str = DEFAULT_MODEL,
 def coding_agent(model: str = DEFAULT_MODEL, 
                 memory_system=None, 
                 workflow_id: Optional[str] = None,
-                config_provider=None) -> Agent[AgentContext]:
+                config_provider=None) -> Agent[MetricsAgentContext]:
     """Create a coding agent specialized in writing and reviewing code.
     
     Args:
@@ -262,7 +262,7 @@ def coding_agent(model: str = DEFAULT_MODEL,
     """
     
     @function_tool
-    def get_code_context(context: RunContextWrapper[AgentContext], workflow_id: str, language: str, task: str) -> str:
+    def get_code_context(context: RunContextWrapper[MetricsAgentContext], workflow_id: str, language: str, task: str) -> str:
         """Retrieve code context from memory
         
         Args:
@@ -293,7 +293,7 @@ def coding_agent(model: str = DEFAULT_MODEL,
         return "No memory system available for code context."
     
     # Create and return the agent
-    return Agent[AgentContext](
+    return Agent[MetricsAgentContext](
         name="coding_agent",
         instructions=instructions,
         model=model,
@@ -307,7 +307,7 @@ def coding_agent(model: str = DEFAULT_MODEL,
 def data_agent(model: str = DEFAULT_MODEL, 
               memory_system=None, 
               workflow_id: Optional[str] = None,
-              config_provider=None) -> Agent[AgentContext]:
+              config_provider=None) -> Agent[MetricsAgentContext]:
     """Create a data agent specialized in data analysis and processing.
     
     Args:
@@ -350,7 +350,7 @@ def data_agent(model: str = DEFAULT_MODEL,
     """
     
     @function_tool
-    def get_data_context(context: RunContextWrapper[AgentContext], workflow_id: str, data_type: str) -> str:
+    def get_data_context(context: RunContextWrapper[MetricsAgentContext], workflow_id: str, data_type: str) -> str:
         """Retrieve data context from memory
         
         Args:
@@ -380,7 +380,7 @@ def data_agent(model: str = DEFAULT_MODEL,
         return "No memory system available for data context."
     
     # Create and return the agent
-    return Agent[AgentContext](
+    return Agent[MetricsAgentContext](
         name="data_agent",
         instructions=instructions,
         model=model,

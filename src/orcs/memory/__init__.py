@@ -38,18 +38,27 @@ if OPENAI_AVAILABLE:
 if SENTENCE_TRANSFORMERS_AVAILABLE:
     from .embeddings import HuggingFaceEmbeddingProvider
 
+# Re-export v2 components as "memory"
+from .v2 import (
+    get_default_memory_system,
+    set_default_memory_system,
+    get_memory_tools
+)
+
+# Explicitly export the old components for backward compatibility
 __all__ = [
-    # Base memory system
-    "MemorySystem",
-    "AgentContext",
+    # Legacy components (v1)
+    'MemorySystem',
+    'AgentContext',
+    'SearchableMemorySystem', 
+    'SearchableAgentContext',
+    'MemoryContent',
+    'generate_memory_key',
     
-    # Enhanced memory
-    "SearchableMemorySystem",
-    "SearchableAgentContext",
-    
-    # Content model
-    "MemoryContent",
-    "generate_memory_key",
+    # New components (v2)
+    'get_default_memory_system',
+    'set_default_memory_system',
+    'get_memory_tools',
     
     # Storage providers
     "MemoryStorageProvider",
