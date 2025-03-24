@@ -319,3 +319,61 @@ class ScopedAccessStorageMemorySystem(StorageBackedMemorySystem):
             
         # Return deduplicated keys
         return list(set(keys)) 
+        
+    def search(self, query: str, scope: str = "global", limit: int = 5, include_child_scopes: bool = True) -> List[Tuple[str, Any, float]]:
+        """Search with hierarchical scope access controls
+        
+        This implementation enhances the basic search by searching across all
+        child scopes that the requesting scope has access to.
+        
+        Args:
+            query: The search query
+            scope: The scope to search in (default: "global")
+            limit: Maximum number of results to return (default: 5)
+            include_child_scopes: Whether to include results from child scopes (default: True)
+            
+        Returns:
+            List of (key, content, score) tuples
+        """
+        # Get results from the direct scope
+        results = super().search(query, scope, limit)
+        
+        # If not including child scopes, return just these results
+        if not include_child_scopes:
+            return results
+            
+        # Get all available scopes from the storage provider
+        all_scopes = set()
+        try:
+            # Try to get all keys and extract their scopes
+            all_keys = self.storage_provider.list_keys("*", "*")
+            for stored_key in all_keys:
+                try:
+                    key_scope = self.storage_provider.get_scope(stored_key)
+                    all_scopes.add(key_scope)
+                except (KeyError, ValueError, NotImplementedError, AttributeError):
+                    # If we can't get the scope for this key, skip it
+                    continue
+        except (NotImplementedError, AttributeError):
+            # If the provider doesn't support list_keys with "*" scope or get_scope,
+            # we can't do hierarchical access across scopes
+            logger.warning("Storage provider doesn't support hierarchical search")
+            return results
+        
+        # Collect search results from child scopes
+        all_results = list(results)  # Copy the original results
+        
+        for data_scope in all_scopes:
+            # Skip if we already searched this scope or don't have access
+            if data_scope == scope or not self.has_access(scope, data_scope):
+                continue
+                
+            # Search in this child scope
+            child_results = super().search(query, data_scope, limit)
+            all_results.extend(child_results)
+            
+        # Sort all results by score (highest first) and limit results
+        all_results.sort(key=lambda x: x[2], reverse=True)
+        logger.debug("Found %d matches for query '%s' in scope '%s' and child scopes", 
+                    len(all_results[:limit]), query, scope)
+        return all_results[:limit] 

@@ -238,7 +238,8 @@ if SENTENCE_TRANSFORMERS_AVAILABLE:
             """
             self.model_name = model_name
             self.model = SentenceTransformer(model_name)
-            self._dimensions = self.model.get_sentence_embedding_dimension()
+            dim = self.model.get_sentence_embedding_dimension()
+            self._dimensions: int = dim if dim is not None else 384  # Default if None
             
             logger.info("Initialized HuggingFaceEmbeddingProvider with model '%s' (%d dimensions)", 
                        model_name, self._dimensions)
@@ -255,7 +256,7 @@ if SENTENCE_TRANSFORMERS_AVAILABLE:
             try:
                 embedding = self.model.encode(text, normalize_embeddings=True)
                 logger.debug("Generated HuggingFace embedding for text (length %d chars)", len(text))
-                return embedding
+                return np.array(embedding)
             except Exception as e:
                 logger.error("Failed to generate HuggingFace embedding: %s", str(e))
                 raise
@@ -275,7 +276,7 @@ if SENTENCE_TRANSFORMERS_AVAILABLE:
             try:
                 embeddings = self.model.encode(texts, normalize_embeddings=True)
                 logger.debug("Generated batch of %d HuggingFace embeddings", len(texts))
-                return list(embeddings)
+                return [np.array(embedding) for embedding in embeddings]
             except Exception as e:
                 logger.error("Failed to generate batch HuggingFace embeddings: %s", str(e))
                 raise

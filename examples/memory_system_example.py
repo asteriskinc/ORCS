@@ -8,8 +8,13 @@ and search capabilities.
 """
 
 import os
+import sys
 import numpy as np
+from typing import Any, Optional
 from tempfile import TemporaryDirectory
+
+# Add the src directory to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from orcs.memory import (
     # Core classes
@@ -32,12 +37,67 @@ from orcs.memory import (
     SimpleEmbeddingProvider,
     
     # Utility functions
-    set_default_memory_system,
-    get_default_memory_system,
-    remember,
-    recall,
     InMemoryStorageProvider
 )
+
+# Global variable to store the default memory system
+_default_memory_system = None
+
+def set_default_memory_system(memory_system):
+    """Set the default memory system to use with utility functions.
+    
+    Args:
+        memory_system: The memory system to set as default
+    """
+    global _default_memory_system
+    _default_memory_system = memory_system
+
+def get_default_memory_system():
+    """Get the default memory system.
+    
+    Returns:
+        The default memory system
+    """
+    global _default_memory_system
+    if _default_memory_system is None:
+        _default_memory_system = BasicMemorySystem()
+    return _default_memory_system
+
+def remember(context, key: str, value: Any, scope: Optional[str] = None, memory_system = None):
+    """Store information in memory.
+    
+    Args:
+        context: Agent context
+        key: Key to store under
+        value: Value to store
+        scope: Optional memory scope (default is agent's scope)
+        memory_system: Optional memory system to use (default: example system)
+    """
+    memory = memory_system or get_default_memory_system()
+    effective_scope = context.agent_id if hasattr(context, "agent_id") else "default"
+    if scope:
+        effective_scope = scope
+    
+    memory.store(key, value, effective_scope)
+
+def recall(context, key: str, scope: Optional[str] = None, memory_system = None):
+    """Retrieve information from memory.
+    
+    Args:
+        context: Agent context
+        key: Key to retrieve
+        scope: Optional memory scope (default is agent's scope)
+        memory_system: Optional memory system to use (default: example system)
+        
+    Returns:
+        The stored value or None if not found
+    """
+    memory = memory_system or get_default_memory_system()
+    effective_scope = context.agent_id if hasattr(context, "agent_id") else "default"
+    if scope:
+        effective_scope = scope
+    
+    return memory.retrieve(key, effective_scope)
 
 def demo_basic_memory():
     """Demonstrate basic memory operations"""

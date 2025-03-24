@@ -7,9 +7,13 @@ import asyncio
 import logging
 import os
 import json
-from typing import Dict, Any, List
+import sys
+from typing import Dict, Any, List, Optional, Set
 from dotenv import load_dotenv
 from datetime import datetime
+
+# Add the src directory to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 # Load environment variables from .env file
 load_dotenv()
@@ -21,8 +25,6 @@ from orcs.agent.infrastructure import create_planner_agent
 from orcs.agent.registry import global_registry, AgentRegistry
 from orcs.workflow.models import WorkflowStatus, Workflow, Task
 
-# Import agent factories to ensure they're registered
-import orcs.agent.factories
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -32,7 +34,7 @@ logger = logging.getLogger("agent_registry_demo")
 MODEL = "gpt-4o-mini"
 
 
-def detect_cycle(tasks: Dict[str, Task], start_id: str, visited: set = None, path: List[str] = None) -> List[str]:
+def detect_cycle(tasks: Dict[str, Task], start_id: str, visited: Optional[Set[str]] = None, path: Optional[List[str]] = None) -> List[str]:
     """
     Detect cycles in the task dependency graph
     
@@ -178,6 +180,10 @@ async def main():
         # Get the workflow - Need to await this since it's an async method
         workflow = await controller.get_workflow(workflow_id)
         
+        if workflow is None:
+            logger.error("Failed to retrieve workflow")
+            return
+            
         # Apply the fix for cyclic dependencies
         if fix_cyclic_dependencies(workflow):
             logger.info("Fixed cyclic dependencies in the workflow")
@@ -196,7 +202,7 @@ async def main():
                     if all(isinstance(dep, int) for dep in task.dependencies):
                         # Map integer indices to task IDs
                         task_ids = list(workflow.tasks.keys())
-                        deps = ", ".join([task_ids[dep] if dep < len(task_ids) else "unknown" 
+                        deps = ", ".join([task_ids[int(dep)] if int(dep) < len(task_ids) else "unknown" 
                                          for dep in task.dependencies])
                     else:
                         # Dependencies are already task IDs

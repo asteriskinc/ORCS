@@ -39,22 +39,6 @@ from .searchable import (
     cosine_similarity
 )
 
-# Memory utility functions
-from .tools import (
-    get_default_memory_system,
-    set_default_memory_system,
-    remember,
-    recall,
-    recall_with_error_handling,
-    forget,
-    list_memories,
-    list_keys_by_scope_pattern,
-    create_workspace,
-    workspace_write,
-    workspace_read,
-    workspace_search
-)
-
 __all__ = [
     # Core memory system
     'MemorySystem',
@@ -79,21 +63,5 @@ __all__ = [
     'EmbeddingProvider',
     'SimpleEmbeddingProvider',
     'SearchableMemorySystem',
-    'cosine_similarity',
-    
-    # Memory utility functions
-    'get_default_memory_system',
-    'set_default_memory_system',
-    
-    # Basic memory functions
-    'remember',
-    'recall',
-    'recall_with_error_handling',
-    'forget',
-    'list_memories',
-    'list_keys_by_scope_pattern',
-    'create_workspace',
-    'workspace_write',
-    'workspace_read',
-    'workspace_search'
+    'cosine_similarity'
 ]

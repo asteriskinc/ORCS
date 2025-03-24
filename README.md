@@ -178,3 +178,18 @@ We'd like to acknowledge the excellent work of the open-source community, especi
 -   [uv](https://github.com/astral-sh/uv) and [ruff](https://github.com/astral-sh/ruff)
 
 We're committed to continuing to build the Agents SDK as an open source framework so others in the community can expand on our approach.
+
+## Design Philosophy
+
+The ORCS framework is designed to be minimalist, simple, non-opinionated, and extensible. We focus on providing core abstractions and capabilities, while keeping the framework itself lean.
+
+### Tools as Examples
+
+Rather than including opinionated utility functions in the core framework, we provide them as examples that users can adapt to their specific needs. This approach:
+
+1. Keeps the core framework minimal
+2. Gives users the flexibility to implement tools that match their requirements
+3. Provides reference implementations that demonstrate best practices
+4. Allows for easy experimentation and customization
+
+See the [`examples/tools`](examples/tools) directory for reference implementations of common tools and utilities.

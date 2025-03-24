@@ -6,7 +6,7 @@ in the memory system, building on top of the core memory abstractions.
 
 import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple, Union, Callable
+from typing import Any, List, Optional, Tuple, Union, Callable
 
 import numpy as np
 
@@ -68,7 +68,7 @@ class SimpleEmbeddingProvider(EmbeddingProvider):
         """
         self.dimension = dimension
         self.vocabulary_size = vocabulary_size
-        self.word_to_index = {}
+        self.word_to_index: dict[str, int] = {}
         self.next_index = 0
     
     def _get_word_index(self, word: str) -> int:
@@ -161,7 +161,7 @@ class SearchableMemorySystem(ScopedAccessStorageMemorySystem):
         self,
         storage_provider: StorageProvider,
         embedding_provider: EmbeddingProvider,
-        default_access_scope: str = "public",
+        default_access_scope: str = "global",
         embedding_field: str = "content"
     ):
         """Initialize a searchable memory system.
@@ -169,8 +169,8 @@ class SearchableMemorySystem(ScopedAccessStorageMemorySystem):
         Args:
             storage_provider: Provider for storing memory data
             embedding_provider: Provider for generating embeddings
-            default_access_scope: The default scope for access control
-            embedding_field: The field of MemoryContent to embed
+            default_access_scope: The default scope for access control (default: "global")
+            embedding_field: The field of MemoryContent to embed (default: "content")
         """
         super().__init__(storage_provider, default_access_scope)
         self.embedding_provider = embedding_provider
@@ -224,13 +224,13 @@ class SearchableMemorySystem(ScopedAccessStorageMemorySystem):
             metadata=metadata
         )
     
-    def store(self, key: str, value: Any, scope: str) -> None:
+    def store(self, key: str, value: Any, scope: str = "global") -> None:
         """Store a value in memory with embedding if applicable.
         
         Args:
             key: The key to store under
             value: The value to store
-            scope: The scope to store in
+            scope: The scope to store in (default: "global")
         """
         # If this is a memory content object, add embedding
         if isinstance(value, MemoryContent):
@@ -242,9 +242,9 @@ class SearchableMemorySystem(ScopedAccessStorageMemorySystem):
     def search(
         self,
         query: str,
-        scope: str,
-        include_child_scopes: bool = True,
+        scope: str = "global",
         limit: int = 10,
+        include_child_scopes: bool = True,
         threshold: float = 0.7,
         filter_fn: Optional[Callable[[Any], bool]] = None
     ) -> List[Tuple[str, Any, float]]:
@@ -252,10 +252,10 @@ class SearchableMemorySystem(ScopedAccessStorageMemorySystem):
         
         Args:
             query: The search query
-            scope: The scope to search in
-            include_child_scopes: Whether to include child scopes
-            limit: Maximum number of results to return
-            threshold: Minimum similarity score threshold
+            scope: The scope to search in (default: "global")
+            limit: Maximum number of results to return (default: 10)
+            include_child_scopes: Whether to include child scopes (default: True)
+            threshold: Minimum similarity score threshold (default: 0.7)
             filter_fn: Optional function to filter results
             
         Returns:
@@ -314,9 +314,9 @@ class SearchableMemorySystem(ScopedAccessStorageMemorySystem):
     def search_by_embedding(
         self,
         embedding: np.ndarray,
-        scope: str,
-        include_child_scopes: bool = True,
+        scope: str = "global",
         limit: int = 10,
+        include_child_scopes: bool = True,
         threshold: float = 0.7,
         filter_fn: Optional[Callable[[Any], bool]] = None
     ) -> List[Tuple[str, Any, float]]:
@@ -327,10 +327,10 @@ class SearchableMemorySystem(ScopedAccessStorageMemorySystem):
         
         Args:
             embedding: The embedding vector to search with
-            scope: The scope to search in
-            include_child_scopes: Whether to include child scopes
-            limit: Maximum number of results to return
-            threshold: Minimum similarity score threshold
+            scope: The scope to search in (default: "global")
+            limit: Maximum number of results to return (default: 10)
+            include_child_scopes: Whether to include child scopes (default: True)
+            threshold: Minimum similarity score threshold (default: 0.7)
             filter_fn: Optional function to filter results
             
         Returns:

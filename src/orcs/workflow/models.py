@@ -51,10 +51,10 @@ class Task:
         self.agent_id = agent_id
         self.dependencies = dependencies or []
         self.status = TaskStatus.PENDING
-        self.result = None
-        self.created_at = datetime.now().isoformat()
-        self.started_at = None
-        self.completed_at = None
+        self.result: Any = None
+        self.created_at: str = datetime.now().isoformat()
+        self.started_at: Optional[str] = None
+        self.completed_at: Optional[str] = None
         self.metadata: Dict[str, Any] = {}
         
         logger.info("Created task '%s' (ID: %s) for agent '%s'", title, self.id, agent_id)
@@ -141,9 +141,9 @@ class Workflow:
         self.tasks: Dict[str, Task] = {}  # Dict[task_id, Task]
         self.status = WorkflowStatus.PLANNING
         self.results: Dict[str, Any] = {}  # Dict[task_id, result]
-        self.created_at = datetime.now().isoformat()
-        self.started_at = None
-        self.completed_at = None
+        self.created_at: str = datetime.now().isoformat()
+        self.started_at: Optional[str] = None
+        self.completed_at: Optional[str] = None
         self.metadata: Dict[str, Any] = {}
         
         logger.info("Created workflow '%s' (ID: %s) for query: '%s'", title, self.id, query)

@@ -1,23 +1,20 @@
 import asyncio
 import logging
-from typing import Dict, List, Any, Optional, Callable, Type
+from typing import Dict, List, Any, Optional, Callable, Type, Union, cast
 from datetime import datetime
 from pydantic import BaseModel
 
 from agents.agent import Agent
 from agents.run import Runner, RunConfig
+from orcs.memory.system import MemorySystem
 from orcs.workflow.models import Workflow, WorkflowStatus, Task, TaskStatus
 from orcs.agent.registry import AgentRegistry, global_registry
 
 # Import metrics hooks
 from orcs.metrics import (
     MetricsAgentHooks,
-    MetricsRunHooks
-)
-
-# Import memory system
-from orcs.memory import (
-    get_default_memory_system
+    MetricsRunHooks,
+    BasicMetricsContext
 )
 
 # Set up logger
@@ -28,7 +25,7 @@ class WorkflowOrchestrator:
     """Orchestrates the execution of workflows"""
     
     def __init__(self, 
-                memory_system=None,
+                memory_system: MemorySystem,
                 agent_registry: Optional[AgentRegistry] = None):
         """Initialize the workflow orchestrator
         
@@ -36,8 +33,7 @@ class WorkflowOrchestrator:
             memory_system: The memory system to use (default: global default)
             agent_registry: Registry of available agents (uses global registry if None)
         """
-        # Get the default memory system if none provided
-        self.memory = memory_system or get_default_memory_system()
+        self.memory = memory_system
         
         self.agent_registry = agent_registry or global_registry
         
@@ -146,9 +142,12 @@ class WorkflowOrchestrator:
             # Get the output type from agent
             output_schema = getattr(agent_instance, 'output_type', None)
             
+            # Create a metrics context
+            metrics_context = BasicMetricsContext()
+            
             # Set up hooks
-            agent_hooks = MetricsAgentHooks(workflow_id=workflow.id)
-            run_hooks = MetricsRunHooks(workflow_id=workflow.id)
+            agent_hooks = MetricsAgentHooks(metrics_context=metrics_context, workflow_id=workflow.id)
+            run_hooks = MetricsRunHooks(metrics_context=metrics_context, workflow_id=workflow.id)
             
             # Configure the run
             run_config = RunConfig(
@@ -179,12 +178,13 @@ class WorkflowOrchestrator:
             logger.info("Task '%s' completed successfully", task.id)
             
             # Parse the result using the output schema if available
+            task_result: Any = None
             if output_schema and issubclass(output_schema, BaseModel):
                 try:
                     # If the result is already a dictionary, use it directly
                     if isinstance(run_result.final_output, dict):
                         parsed_output = output_schema(**run_result.final_output)
-                        task.result = parsed_output.model_dump()
+                        task_result = parsed_output.model_dump()
                         logger.info(
                             f"Successfully parsed dictionary output for task '{task.id}' into {output_schema.__name__}"
                         )
@@ -195,16 +195,19 @@ class WorkflowOrchestrator:
                             f"Expected format matching {output_schema.__name__}. "
                             f"Storing raw output instead."
                         )
-                        task.result = run_result.final_output
+                        task_result = run_result.final_output
                 except Exception as e:
                     logger.warning(
                         f"Failed to parse agent output using schema {output_schema.__name__}: {str(e)}. "
                         f"Storing raw output instead."
                     )
-                    task.result = run_result.final_output
+                    task_result = run_result.final_output
             else:
                 # If no output schema is defined, store the raw output
-                task.result = run_result.final_output
+                task_result = run_result.final_output
+                
+            # Assign the result to the task
+            task.result = task_result
             
             task.status = TaskStatus.COMPLETED
             task.completed_at = datetime.now().isoformat()
@@ -236,9 +239,10 @@ class WorkflowOrchestrator:
             The task input as a string
         """
         # Check for custom input in task metadata
-        if task.metadata.get("input_data"):
+        input_data = task.metadata.get("input_data")
+        if input_data is not None:
             logger.info("Using custom input data for task '%s'", task.id)
-            return task.metadata.get("input_data")
+            return str(input_data)
             
         # Build input from task description and dependencies
         input_parts = []
@@ -254,8 +258,8 @@ class WorkflowOrchestrator:
             input_parts.append("\nPrevious task outputs:")
             for dep_id in task.dependencies:
                 dep_task = workflow.get_task(dep_id)
-                if dep_task.status == TaskStatus.COMPLETED:
-                    if dep_task.result:
+                if dep_task is not None and dep_task.status == TaskStatus.COMPLETED:
+                    if dep_task.result is not None:
                         input_parts.append(f"Output from {dep_task.agent_id} (Task {dep_id}):")
                         # Convert result to string if it's not already a string
                         result_str = str(dep_task.result)

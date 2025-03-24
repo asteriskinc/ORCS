@@ -10,23 +10,23 @@ class MemorySystem(ABC):
     """Unified memory system interface for underlying storage and retrieval"""
     
     @abstractmethod
-    def store(self, key: str, value: Any, scope: str = "global") -> None:
+    def store(self, key: str, value: Any, scope: str) -> None:
         """Store data with scope information
         
         Args:
             key: The key to store data under
             value: The data to store
-            scope: The scope to store the data in (default: "global")
+            scope: The scope to store the data in
         """
         pass
         
     @abstractmethod
-    def retrieve(self, key: str, scope: str = "global") -> Any:
+    def retrieve(self, key: str, scope: str) -> Any:
         """Retrieve data from specified scope
         
         Args:
             key: The key to retrieve
-            scope: The scope to retrieve from (default: "global")
+            scope: The scope to retrieve from
             
         Returns:
             The stored value, or None if not found
@@ -34,12 +34,12 @@ class MemorySystem(ABC):
         pass
         
     @abstractmethod
-    def delete(self, key: str, scope: str = "global") -> bool:
+    def delete(self, key: str, scope: str) -> bool:
         """Delete data from specified scope
         
         Args:
             key: The key to delete
-            scope: The scope to delete from (default: "global")
+            scope: The scope to delete from
             
         Returns:
             True if something was deleted, False otherwise
@@ -47,12 +47,12 @@ class MemorySystem(ABC):
         pass
         
     @abstractmethod
-    def list_keys(self, pattern: str = "*", scope: str = "global") -> List[str]:
+    def list_keys(self, pattern: str, scope: str) -> List[str]:
         """List keys matching a pattern in specified scope
         
         Args:
-            pattern: Pattern to match keys against (default: "*" for all keys)
-            scope: The scope to list keys from (default: "global")
+            pattern: Pattern to match keys against
+            scope: The scope to list keys from
             
         Returns:
             List of matching key names
@@ -60,13 +60,13 @@ class MemorySystem(ABC):
         pass
         
     @abstractmethod
-    def search(self, query: str, scope: str = "global", limit: int = 5) -> List[Tuple[str, Any, float]]:
+    def search(self, query: str, scope: str, limit: int) -> List[Tuple[str, Any, float]]:
         """Search for content semantically similar to the query
         
         Args:
             query: The search query
-            scope: The scope to search in (default: "global")
-            limit: Maximum number of results to return (default: 5)
+            scope: The scope to search in
+            limit: Maximum number of results to return
             
         Returns:
             List of (key, content, score) tuples
@@ -101,25 +101,25 @@ class BasicMemorySystem(MemorySystem):
         logger.info("Initializing BasicMemorySystem")
         self.data = {}  # Dict[scope][key] = value
         
-    def store(self, key: str, value: Any, scope: str = "global") -> None:
+    def store(self, key: str, value: Any, scope: str) -> None:
         """Store data with scope information
         
         Args:
             key: The key to store data under
             value: The data to store
-            scope: The scope to store the data in (default: "global")
+            scope: The scope to store the data in
         """
         if scope not in self.data:
             self.data[scope] = {}
         self.data[scope][key] = value
         logger.debug("Stored value at key '%s' in scope '%s'", key, scope)
         
-    def retrieve(self, key: str, scope: str = "global") -> Any:
+    def retrieve(self, key: str, scope: str) -> Any:
         """Retrieve data from specified scope
         
         Args:
             key: The key to retrieve
-            scope: The scope to retrieve from (default: "global")
+            scope: The scope to retrieve from
             
         Returns:
             The stored value, or None if not found
@@ -130,12 +130,12 @@ class BasicMemorySystem(MemorySystem):
         logger.debug("Retrieved value from key '%s' in scope '%s'", key, scope)
         return self.data[scope][key]
         
-    def delete(self, key: str, scope: str = "global") -> bool:
+    def delete(self, key: str, scope: str) -> bool:
         """Delete data from specified scope
         
         Args:
             key: The key to delete
-            scope: The scope to delete from (default: "global")
+            scope: The scope to delete from
             
         Returns:
             True if something was deleted, False otherwise
@@ -147,12 +147,12 @@ class BasicMemorySystem(MemorySystem):
         logger.debug("Deleted key '%s' from scope '%s'", key, scope)
         return True
         
-    def list_keys(self, pattern: str = "*", scope: str = "global") -> List[str]:
+    def list_keys(self, pattern: str, scope: str) -> List[str]:
         """List keys matching a pattern in specified scope
         
         Args:
-            pattern: Pattern to match keys against (default: "*" for all keys)
-            scope: The scope to list keys from (default: "global")
+            pattern: Pattern to match keys against
+            scope: The scope to list keys from
             
         Returns:
             List of matching key names
@@ -174,13 +174,13 @@ class BasicMemorySystem(MemorySystem):
                     len(keys), pattern, scope)
         return keys
         
-    def search(self, query: str, scope: str = "global", limit: int = 5) -> List[Tuple[str, Any, float]]:
+    def search(self, query: str, scope: str, limit: int) -> List[Tuple[str, Any, float]]:
         """Basic search implementation that checks for keyword presence
         
         Args:
             query: The search query
-            scope: The scope to search in (default: "global")
-            limit: Maximum number of results to return (default: 5)
+            scope: The scope to search in
+            limit: Maximum number of results to return
             
         Returns:
             List of (key, content, score) tuples
@@ -286,7 +286,7 @@ class ScopedAccessMemorySystem(BasicMemorySystem):
         logger.debug("Access check: %s -> %s = %s", requesting_scope, target_scope, has_access)
         return has_access
     
-    def retrieve(self, key: str, scope: str = "global") -> Any:
+    def retrieve(self, key: str, scope: str) -> Any:
         """Retrieve data with hierarchical scope access controls
         
         This method first checks the specified scope directly.
@@ -295,7 +295,7 @@ class ScopedAccessMemorySystem(BasicMemorySystem):
         
         Args:
             key: The key to retrieve
-            scope: The scope to retrieve from (default: "global")
+            scope: The scope to retrieve from
             
         Returns:
             The stored value, or None if not found or not accessible
@@ -320,12 +320,12 @@ class ScopedAccessMemorySystem(BasicMemorySystem):
                     
         return None
     
-    def list_keys(self, pattern: str = "*", scope: str = "global", include_child_scopes: bool = False) -> List[str]:
+    def list_keys(self, pattern: str, scope: str, include_child_scopes: bool = False) -> List[str]:
         """List keys matching a pattern in specified scope
         
         Args:
-            pattern: Pattern to match keys against (default: "*" for all keys)
-            scope: The scope to list keys from (default: "global")
+            pattern: Pattern to match keys against
+            scope: The scope to list keys from
             include_child_scopes: Whether to include keys from child scopes
             
         Returns:
