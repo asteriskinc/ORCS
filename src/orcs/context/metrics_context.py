@@ -18,20 +18,20 @@ class MetricsAgentContext(AgentContext):
     """
     
     def __init__(self, 
-                metrics_impl: Optional[MetricsContext] = None, 
-                agent_id: Optional[str] = None, 
-                workflow_id: Optional[str] = None):
+                metrics_context: MetricsContext,
+                agent_id: str,
+                workflow_id: str):
         """Initialize the metrics agent context
         
         Args:
-            metrics_impl: The metrics implementation to use (default: BasicMetricsContext)
-            agent_id: ID of the agent (defaults to generated UUID)
-            workflow_id: ID of the workflow (defaults to generated UUID)
+            metrics_context: The metrics implementation to use
+            agent_id: ID of the agent
+            workflow_id: ID of the workflow
         """
         super().__init__(agent_id=agent_id, workflow_id=workflow_id)
         
-        # Use the provided metrics implementation or create a basic one
-        self.metrics = metrics_impl or BasicMetricsContext()
+        # Use the provided metrics implementation
+        self.metrics = metrics_context
         logger.debug("Initialized MetricsAgentContext with metrics implementation %s", 
                     self.metrics.__class__.__name__)
     
@@ -44,12 +44,7 @@ class MetricsAgentContext(AgentContext):
             metadata: Additional data about the event
         """
         # Add agent and workflow IDs to metadata if not present
-        enriched_metadata = metadata.copy()
-        if "agent_id" not in enriched_metadata:
-            enriched_metadata["agent_id"] = self.agent_id
-        if "workflow_id" not in enriched_metadata:
-            enriched_metadata["workflow_id"] = self.workflow_id
-            
+        enriched_metadata = self._enrich_metadata(metadata)
         self.metrics.record_event(event_type, resource_id, enriched_metadata)
     
     def record_metric(self, metric_name: str, value: float, dimensions: Dict[str, str]) -> None:
@@ -61,12 +56,7 @@ class MetricsAgentContext(AgentContext):
             dimensions: Dimensions for categorizing the metric
         """
         # Add agent and workflow dimensions if not present
-        enriched_dimensions = dimensions.copy()
-        if "agent_id" not in enriched_dimensions:
-            enriched_dimensions["agent_id"] = self.agent_id
-        if "workflow_id" not in enriched_dimensions:
-            enriched_dimensions["workflow_id"] = self.workflow_id
-            
+        enriched_dimensions = self._enrich_dimensions(dimensions)
         self.metrics.record_metric(metric_name, value, enriched_dimensions)
     
     def start_timer(self, timer_name: str, resource_id: str) -> None:
@@ -99,11 +89,7 @@ class MetricsAgentContext(AgentContext):
         Returns:
             List of recorded events
         """
-        if hasattr(self.metrics, "events"):
-            if event_type:
-                return [e for e in self.metrics.events if e["event_type"] == event_type]
-            return self.metrics.events
-        return []
+        return self.metrics.get_events(event_type)
     
     def get_metrics(self, metric_name: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get recorded metrics
@@ -114,8 +100,54 @@ class MetricsAgentContext(AgentContext):
         Returns:
             List of recorded metrics
         """
-        if hasattr(self.metrics, "metrics"):
-            if metric_name:
-                return [m for m in self.metrics.metrics if m["metric_name"] == metric_name]
-            return self.metrics.metrics
-        return [] 
+        return self.metrics.get_metrics(metric_name)
+        
+    def _enrich_metadata(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """Enrich metadata with agent and workflow IDs
+        
+        Args:
+            metadata: Original metadata dictionary
+            
+        Returns:
+            Enriched metadata dictionary
+        """
+        enriched = metadata.copy()
+        if "agent_id" not in enriched:
+            enriched["agent_id"] = self.agent_id
+        if "workflow_id" not in enriched:
+            enriched["workflow_id"] = self.workflow_id
+        return enriched
+        
+    def _enrich_dimensions(self, dimensions: Dict[str, str]) -> Dict[str, str]:
+        """Enrich dimensions with agent and workflow IDs
+        
+        Args:
+            dimensions: Original dimensions dictionary
+            
+        Returns:
+            Enriched dimensions dictionary
+        """
+        enriched = dimensions.copy()
+        if "agent_id" not in enriched:
+            enriched["agent_id"] = self.agent_id
+        if "workflow_id" not in enriched:
+            enriched["workflow_id"] = self.workflow_id
+        return enriched
+
+    @classmethod
+    def create_with_basic_metrics(cls, agent_id: str, workflow_id: str) -> "MetricsAgentContext":
+        """Create a MetricsAgentContext with a BasicMetricsContext
+        
+        Factory method for creating a context with the default metrics implementation.
+        Makes the default choice explicit rather than implicit.
+        
+        Args:
+            agent_id: ID of the agent
+            workflow_id: ID of the workflow
+            
+        Returns:
+            MetricsAgentContext with BasicMetricsContext
+        """
+        return cls(metrics_context=BasicMetricsContext(), 
+                  agent_id=agent_id, 
+                  workflow_id=workflow_id) 

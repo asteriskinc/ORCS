@@ -1,6 +1,5 @@
 from typing import Dict, Any, Optional
 import logging
-from uuid import uuid4
 
 # Set up logger
 logger = logging.getLogger("orcs.context.agent_context")
@@ -12,15 +11,15 @@ class AgentContext:
     in RunContextWrapper. All specific context implementations should extend this.
     """
     
-    def __init__(self, agent_id: Optional[str] = None, workflow_id: Optional[str] = None):
+    def __init__(self, agent_id: str, workflow_id: str):
         """Initialize the agent context
         
         Args:
-            agent_id: ID of the agent (defaults to generated UUID)
-            workflow_id: ID of the workflow (defaults to generated UUID)
+            agent_id: ID of the agent
+            workflow_id: ID of the workflow
         """
-        self.agent_id = agent_id or str(uuid4())
-        self.workflow_id = workflow_id or str(uuid4())
+        self.agent_id = agent_id
+        self.workflow_id = workflow_id
         self.metadata: Dict[str, Any] = {}
         logger.debug("Initialized AgentContext for agent '%s' in workflow '%s'", 
                     self.agent_id, self.workflow_id)
@@ -44,8 +43,6 @@ class AgentContext:
         Returns:
             The metadata value or default
         """
-        if key is None:
-            return self.metadata.copy()
         return self.metadata.get(key, default)
     
     def has_metadata(self, key: str) -> bool:

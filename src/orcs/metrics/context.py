@@ -58,6 +58,30 @@ class MetricsContext(ABC):
             Duration in seconds
         """
         pass
+    
+    @abstractmethod
+    def get_events(self, event_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get recorded events
+        
+        Args:
+            event_type: Optional filter for event type
+            
+        Returns:
+            List of recorded events
+        """
+        pass
+    
+    @abstractmethod
+    def get_metrics(self, metric_name: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get recorded metrics
+        
+        Args:
+            metric_name: Optional filter for metric name
+            
+        Returns:
+            List of recorded metrics
+        """
+        pass
 
 
 class BasicMetricsContext(MetricsContext):
@@ -139,6 +163,32 @@ class BasicMetricsContext(MetricsContext):
         logger.debug("Stopped timer: %s for resource %s, duration: %f seconds", 
                     timer_name, resource_id, duration)
         return duration
+    
+    def get_events(self, event_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get recorded events
+        
+        Args:
+            event_type: Optional filter for event type
+            
+        Returns:
+            List of recorded events
+        """
+        if event_type:
+            return [e for e in self.events if e["event_type"] == event_type]
+        return self.events.copy()
+    
+    def get_metrics(self, metric_name: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get recorded metrics
+        
+        Args:
+            metric_name: Optional filter for metric name
+            
+        Returns:
+            List of recorded metrics
+        """
+        if metric_name:
+            return [m for m in self.metrics if m["metric_name"] == metric_name]
+        return self.metrics.copy()
 
 
 class CompositeMetricsContext(MetricsContext):
@@ -195,6 +245,38 @@ class CompositeMetricsContext(MetricsContext):
         """
         durations = [context.stop_timer(timer_name, resource_id) for context in self.contexts]
         return sum(durations) / len(durations) if durations else 0.0
+    
+    def get_events(self, event_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get recorded events from all contexts
+        
+        For composite contexts, this returns events from the first context only.
+        Use this method with caution in composite contexts.
+        
+        Args:
+            event_type: Optional filter for event type
+            
+        Returns:
+            List of recorded events from the first context
+        """
+        if not self.contexts:
+            return []
+        return self.contexts[0].get_events(event_type)
+    
+    def get_metrics(self, metric_name: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get recorded metrics from all contexts
+        
+        For composite contexts, this returns metrics from the first context only.
+        Use this method with caution in composite contexts.
+        
+        Args:
+            metric_name: Optional filter for metric name
+            
+        Returns:
+            List of recorded metrics from the first context
+        """
+        if not self.contexts:
+            return []
+        return self.contexts[0].get_metrics(metric_name)
 
 
 class WorkflowMetricsContext(MetricsContext):
@@ -249,12 +331,10 @@ class WorkflowMetricsContext(MetricsContext):
             timer_name: Name of the timer
             resource_id: ID of the resource being timed
         """
-        # Add workflow prefix to timer name
-        workflow_timer_name = f"workflow:{self.workflow_id}:{timer_name}"
-        self.base_context.start_timer(workflow_timer_name, resource_id)
+        self.base_context.start_timer(timer_name, resource_id)
     
     def stop_timer(self, timer_name: str, resource_id: str) -> float:
-        """Stop a workflow timer and return the duration
+        """Stop a workflow timer
         
         Args:
             timer_name: Name of the timer
@@ -263,20 +343,37 @@ class WorkflowMetricsContext(MetricsContext):
         Returns:
             Duration in seconds
         """
-        # Add workflow prefix to timer name (same as in start_timer)
-        workflow_timer_name = f"workflow:{self.workflow_id}:{timer_name}"
-        duration = self.base_context.stop_timer(workflow_timer_name, resource_id)
+        return self.base_context.stop_timer(timer_name, resource_id)
+    
+    def get_events(self, event_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get recorded events
         
-        # Also record this as a metric automatically
-        self.record_metric(
-            metric_name=f"{timer_name}_duration",
-            value=duration,
-            dimensions={
-                "resource_id": resource_id
-            }
-        )
+        Args:
+            event_type: Optional filter for event type
+            
+        Returns:
+            List of recorded events
+        """
+        events = self.base_context.get_events(event_type)
+        if event_type is None:
+            # If not filtering by event type, we can filter by workflow ID
+            return [e for e in events if e.get("metadata", {}).get("workflow_id") == self.workflow_id]
+        return events
+    
+    def get_metrics(self, metric_name: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get recorded metrics
         
-        return duration
+        Args:
+            metric_name: Optional filter for metric name
+            
+        Returns:
+            List of recorded metrics
+        """
+        metrics = self.base_context.get_metrics(metric_name)
+        if metric_name is None:
+            # If not filtering by metric name, we can filter by workflow ID
+            return [m for m in metrics if m.get("dimensions", {}).get("workflow_id") == self.workflow_id]
+        return metrics
 
 
 class AgentMetricsContext(MetricsContext):
