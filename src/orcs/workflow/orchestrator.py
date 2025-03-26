@@ -6,15 +6,15 @@ from pydantic import BaseModel
 
 from agents.agent import Agent
 from agents.run import Runner, RunConfig
+from orcs.context.metrics_context import MetricsAgentContext
 from orcs.memory.system import MemorySystem
+from orcs.metrics.context import BasicMetricsContext
 from orcs.workflow.models import Workflow, WorkflowStatus, Task, TaskStatus
 from orcs.agent.registry import AgentRegistry, global_registry
 
-# Import metrics hooks
 from orcs.metrics import (
     MetricsAgentHooks,
     MetricsRunHooks,
-    BasicMetricsContext
 )
 
 # Set up logger
@@ -142,12 +142,10 @@ class WorkflowOrchestrator:
             # Get the output type from agent
             output_schema = getattr(agent_instance, 'output_type', None)
             
-            # Create a metrics context
-            metrics_context = BasicMetricsContext()
-            
             # Set up hooks
-            agent_hooks = MetricsAgentHooks(metrics_context=metrics_context, workflow_id=workflow.id)
-            run_hooks = MetricsRunHooks(metrics_context=metrics_context, workflow_id=workflow.id)
+            run_hooks = MetricsRunHooks(workflow_id=workflow.id)
+            metrics_context = BasicMetricsContext()
+            agent_context = MetricsAgentContext(metrics_context=metrics_context, workflow_id=workflow.id, agent_id=task.agent_id)
             
             # Configure the run
             run_config = RunConfig(
@@ -171,7 +169,9 @@ class WorkflowOrchestrator:
                 starting_agent=agent_instance,
                 input=task_input,
                 run_config=run_config,
-                hooks=run_hooks
+                hooks=run_hooks,
+                context=agent_context,
+                max_turns=25
             )
             
             # Process the result

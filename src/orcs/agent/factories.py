@@ -123,7 +123,7 @@ def research_agent(model: str = DEFAULT_MODEL,
         instructions=instructions,
         model=model,
         model_settings=model_settings,
-        tools=[get_research_context],
+        tools=[],
         output_type=ResearchOutput
     )
 
@@ -210,7 +210,7 @@ def writing_agent(model: str = DEFAULT_MODEL,
         instructions=instructions,
         model=model,
         model_settings=model_settings,
-        tools=[get_writing_materials],
+        tools=[],
         output_type=WritingOutput
     )
 
@@ -298,7 +298,7 @@ def coding_agent(model: str = DEFAULT_MODEL,
         instructions=instructions,
         model=model,
         model_settings=model_settings,
-        tools=[get_code_context],
+        tools=[],
         output_type=CodeOutput
     )
 
@@ -367,7 +367,7 @@ def data_agent(model: str = DEFAULT_MODEL,
                 # Get relevant memory items for this data task
                 memory_data = memory_system.search(
                     workflow_id=workflow_id,
-                    query=f"data analysis for {data_type}",
+                    query=f"data analysis for {}",
                     limit=5
                 )
                 if memory_data:
@@ -385,6 +385,6 @@ def data_agent(model: str = DEFAULT_MODEL,
         instructions=instructions,
         model=model,
         model_settings=model_settings,
-        tools=[get_data_context],
+        tools=[],
         output_type=DataOutput
     ) 

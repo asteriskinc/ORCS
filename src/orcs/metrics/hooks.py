@@ -1,15 +1,12 @@
 from typing import Any, Dict, Optional
 import logging
 import time
-import uuid
 
 from agents.agent import Agent
 from agents.tool import Tool
 from agents.run_context import RunContextWrapper
 from agents.lifecycle import RunHooks, AgentHooks
 from agents import get_current_trace
-
-from orcs.metrics.context import MetricsContext
 
 # Set up logger
 logger = logging.getLogger("orcs.metrics.hooks")
@@ -19,18 +16,17 @@ class MetricsAgentHooks(AgentHooks):
     """Hooks for collecting agent metrics
     
     These hooks record events and metrics for agent lifecycle events.
+    They extract the metrics context from the agent context.
     """
     
-    def __init__(self, metrics_context: MetricsContext, workflow_id: str = "unknown"):
+    def __init__(self, workflow_id: str):
         """Initialize the agent hooks
         
         Args:
-            metrics_context: The metrics context to use (default: global default)
             workflow_id: The ID of the workflow
         """
         super().__init__()
         logger.debug("Initializing MetricsAgentHooks for workflow '%s'", workflow_id)
-        self.metrics = metrics_context
         self.workflow_id = workflow_id
         
     async def on_start(self, context: RunContextWrapper, agent: Agent) -> None:
@@ -40,14 +36,15 @@ class MetricsAgentHooks(AgentHooks):
             context: The run context wrapper
             agent: The agent that started
         """
+        metrics = context.context.metrics
         logger.info("Agent '%s' starting in workflow '%s'", 
                    agent.name, self.workflow_id)
                    
         # Start a timer for the agent
-        self.metrics.start_timer("agent_execution", agent.name)
+        metrics.start_timer("agent_execution", agent.name)
         
         # Record agent start event
-        self.metrics.record_event(
+        metrics.record_event(
             event_type="agent_start",
             resource_id=agent.name,
             metadata={
@@ -65,13 +62,14 @@ class MetricsAgentHooks(AgentHooks):
             agent: The agent that finished
             output: The output of the agent
         """
+        metrics = context.context.metrics
         logger.info("Agent '%s' completed in workflow '%s'", 
                    agent.name, self.workflow_id)
         logger.debug("Agent '%s' output length: %d characters", 
                    agent.name, len(str(output)) if output is not None else 0)
                    
         # Stop the agent timer and record duration
-        duration = self.metrics.stop_timer("agent_execution", agent.name)
+        duration = metrics.stop_timer("agent_execution", agent.name)
         
         # Get token usage information from context
         input_tokens = context.usage.input_tokens
@@ -80,7 +78,7 @@ class MetricsAgentHooks(AgentHooks):
         
         # Record token usage metrics
         if total_tokens > 0:
-            self.metrics.record_metric(
+            metrics.record_metric(
                 metric_name="agent_token_usage",
                 value=total_tokens,
                 dimensions={
@@ -91,7 +89,7 @@ class MetricsAgentHooks(AgentHooks):
             )
             
         if input_tokens > 0:
-            self.metrics.record_metric(
+            metrics.record_metric(
                 metric_name="agent_token_usage",
                 value=input_tokens,
                 dimensions={
@@ -102,7 +100,7 @@ class MetricsAgentHooks(AgentHooks):
             )
             
         if output_tokens > 0:
-            self.metrics.record_metric(
+            metrics.record_metric(
                 metric_name="agent_token_usage",
                 value=output_tokens,
                 dimensions={
@@ -113,7 +111,7 @@ class MetricsAgentHooks(AgentHooks):
             )
         
         # Record agent completion event
-        self.metrics.record_event(
+        metrics.record_event(
             event_type="agent_end",
             resource_id=agent.name,
             metadata={
@@ -128,7 +126,7 @@ class MetricsAgentHooks(AgentHooks):
         )
         
         # Record agent duration metric
-        self.metrics.record_metric(
+        metrics.record_metric(
             metric_name="agent_duration",
             value=duration,
             dimensions={
@@ -145,15 +143,16 @@ class MetricsAgentHooks(AgentHooks):
             agent: The agent that is executing the tool
             tool: The tool being executed
         """
+        metrics = context.context.metrics
         logger.info("Agent '%s' starting tool '%s' in workflow '%s'", 
                    agent.name, tool.name, self.workflow_id)
                    
         # Start a timer for the tool
         tool_id = f"{agent.name}:{tool.name}"
-        self.metrics.start_timer("tool_execution", tool_id)
+        metrics.start_timer("tool_execution", tool_id)
         
         # Record tool start event
-        self.metrics.record_event(
+        metrics.record_event(
             event_type="tool_start",
             resource_id=tool_id,
             metadata={
@@ -173,6 +172,7 @@ class MetricsAgentHooks(AgentHooks):
             tool: The tool that was executed
             result: The result of the tool execution
         """
+        metrics = context.context.metrics
         logger.info("Agent '%s' completed tool '%s' in workflow '%s'", 
                    agent.name, tool.name, self.workflow_id)
         result_preview = result[:200] + "..." if len(result) > 200 else result
@@ -180,7 +180,7 @@ class MetricsAgentHooks(AgentHooks):
         
         # Stop the tool timer and record duration
         tool_id = f"{agent.name}:{tool.name}"
-        duration = self.metrics.stop_timer("tool_execution", tool_id)
+        duration = metrics.stop_timer("tool_execution", tool_id)
         
         # Get token usage from context.usage or fall back to custom attributes
         # Note: Tool-specific tokens may not be directly available in usage
@@ -190,7 +190,7 @@ class MetricsAgentHooks(AgentHooks):
         
         # Record tool token usage metrics if available
         if tool_input_tokens > 0:
-            self.metrics.record_metric(
+            metrics.record_metric(
                 metric_name="tool_token_usage",
                 value=tool_input_tokens,
                 dimensions={
@@ -202,7 +202,7 @@ class MetricsAgentHooks(AgentHooks):
             )
             
         if tool_output_tokens > 0:
-            self.metrics.record_metric(
+            metrics.record_metric(
                 metric_name="tool_token_usage",
                 value=tool_output_tokens,
                 dimensions={
@@ -214,7 +214,7 @@ class MetricsAgentHooks(AgentHooks):
             )
         
         # Record tool completion event
-        self.metrics.record_event(
+        metrics.record_event(
             event_type="tool_end",
             resource_id=tool_id,
             metadata={
@@ -230,7 +230,7 @@ class MetricsAgentHooks(AgentHooks):
         )
         
         # Record tool duration metric
-        self.metrics.record_metric(
+        metrics.record_metric(
             metric_name="tool_duration",
             value=duration,
             dimensions={
@@ -248,11 +248,12 @@ class MetricsAgentHooks(AgentHooks):
             agent: The agent receiving control
             source: The agent handing off control
         """
+        metrics = context.context.metrics
         logger.info("Agent '%s' receiving handoff from '%s' in workflow '%s'", 
                    agent.name, source.name, self.workflow_id)
                    
         # Record handoff event
-        self.metrics.record_event(
+        metrics.record_event(
             event_type="agent_handoff",
             resource_id=agent.name,
             metadata={
@@ -263,7 +264,7 @@ class MetricsAgentHooks(AgentHooks):
         )
         
         # Record handoff count metric
-        self.metrics.record_metric(
+        metrics.record_metric(
             metric_name="agent_handoffs",
             value=1.0,  # Increment by 1
             dimensions={
@@ -278,18 +279,17 @@ class MetricsRunHooks(RunHooks):
     """Hooks for collecting run metrics
     
     These hooks record events and metrics for run lifecycle events.
+    They extract the metrics context from the agent context.
     """
     
-    def __init__(self, metrics_context: MetricsContext, workflow_id: str = "unknown"):
+    def __init__(self, workflow_id: str):
         """Initialize the run hooks
         
         Args:
-            metrics_context: The metrics context to use (default: global default)
             workflow_id: The ID of the workflow
         """
         super().__init__()
         logger.debug("Initializing MetricsRunHooks for workflow '%s'", workflow_id)
-        self.metrics = metrics_context
         self.workflow_id = workflow_id
         
     async def on_run_start(self, context: RunContextWrapper) -> None:
@@ -298,15 +298,21 @@ class MetricsRunHooks(RunHooks):
         Args:
             context: The run context wrapper
         """
+        metrics = context.context.metrics
+        
         trace = get_current_trace()
-        run_id = trace.trace_id if trace is not None else str(uuid.uuid4())
+        if trace is None:
+            logger.warning("Cannot get trace ID for run in workflow '%s'", self.workflow_id)
+            return
+            
+        run_id = trace.trace_id
         logger.info("Run '%s' starting in workflow '%s'", run_id, self.workflow_id)
         
         # Start a timer for the run
-        self.metrics.start_timer("run_execution", run_id)
+        metrics.start_timer("run_execution", run_id)
         
         # Record run start event
-        self.metrics.record_event(
+        metrics.record_event(
             event_type="run_start",
             resource_id=run_id,
             metadata={
@@ -322,12 +328,18 @@ class MetricsRunHooks(RunHooks):
             context: The run context wrapper
             result: The result of the run
         """
+        metrics = context.context.metrics
+        
         trace = get_current_trace()
-        run_id = trace.trace_id if trace is not None else str(uuid.uuid4())
+        if trace is None:
+            logger.warning("Cannot get trace ID for run in workflow '%s'", self.workflow_id)
+            return
+            
+        run_id = trace.trace_id
         logger.info("Run '%s' completed in workflow '%s'", run_id, self.workflow_id)
         
         # Stop the run timer and record duration
-        duration = self.metrics.stop_timer("run_execution", run_id)
+        duration = metrics.stop_timer("run_execution", run_id)
         
         # Get token usage information from context
         input_tokens = context.usage.input_tokens
@@ -336,7 +348,7 @@ class MetricsRunHooks(RunHooks):
         
         # Record token usage metrics
         if total_tokens > 0:
-            self.metrics.record_metric(
+            metrics.record_metric(
                 metric_name="run_token_usage",
                 value=total_tokens,
                 dimensions={
@@ -347,7 +359,7 @@ class MetricsRunHooks(RunHooks):
             )
             
         if input_tokens > 0:
-            self.metrics.record_metric(
+            metrics.record_metric(
                 metric_name="run_token_usage",
                 value=input_tokens,
                 dimensions={
@@ -358,7 +370,7 @@ class MetricsRunHooks(RunHooks):
             )
             
         if output_tokens > 0:
-            self.metrics.record_metric(
+            metrics.record_metric(
                 metric_name="run_token_usage",
                 value=output_tokens,
                 dimensions={
@@ -369,7 +381,7 @@ class MetricsRunHooks(RunHooks):
             )
             
         # Record run completion event
-        self.metrics.record_event(
+        metrics.record_event(
             event_type="run_end",
             resource_id=run_id,
             metadata={
@@ -384,7 +396,7 @@ class MetricsRunHooks(RunHooks):
         )
         
         # Record run duration metric
-        self.metrics.record_metric(
+        metrics.record_metric(
             metric_name="run_duration",
             value=duration,
             dimensions={
@@ -399,17 +411,24 @@ class MetricsRunHooks(RunHooks):
             context: The run context wrapper
             agent: The agent that started
         """
+        metrics = context.context.metrics
+        
         trace = get_current_trace()
-        run_id = trace.trace_id if trace is not None else str(uuid.uuid4())
+        if trace is None:
+            logger.warning("Cannot get trace ID for agent '%s' in workflow '%s'", 
+                          agent.name, self.workflow_id)
+            return
+            
+        run_id = trace.trace_id
         logger.info("Run: Agent '%s' starting in run '%s', workflow '%s'", 
                    agent.name, run_id, self.workflow_id)
                    
         # Start a timer for the agent in this run
         agent_run_id = f"{run_id}:{agent.name}"
-        self.metrics.start_timer("run_agent_execution", agent_run_id)
+        metrics.start_timer("run_agent_execution", agent_run_id)
         
         # Record agent start in run event
-        self.metrics.record_event(
+        metrics.record_event(
             event_type="run_agent_start",
             resource_id=agent_run_id,
             metadata={
@@ -428,14 +447,21 @@ class MetricsRunHooks(RunHooks):
             agent: The agent that finished
             output: The output of the agent
         """
+        metrics = context.context.metrics
+        
         trace = get_current_trace()
-        run_id = trace.trace_id if trace is not None else str(uuid.uuid4())
+        if trace is None:
+            logger.warning("Cannot get trace ID for agent '%s' in workflow '%s'", 
+                          agent.name, self.workflow_id)
+            return
+            
+        run_id = trace.trace_id
         logger.info("Run: Agent '%s' completed in run '%s', workflow '%s'", 
                    agent.name, run_id, self.workflow_id)
         
         # Stop the agent timer
         agent_run_id = f"{run_id}:{agent.name}"
-        duration = self.metrics.stop_timer("run_agent_execution", agent_run_id)
+        duration = metrics.stop_timer("run_agent_execution", agent_run_id)
         
         # Get token usage information from context
         input_tokens = context.usage.input_tokens
@@ -444,7 +470,7 @@ class MetricsRunHooks(RunHooks):
         
         # Record token usage metrics for this agent
         if total_tokens > 0:
-            self.metrics.record_metric(
+            metrics.record_metric(
                 metric_name="agent_token_usage",
                 value=total_tokens,
                 dimensions={
@@ -456,7 +482,7 @@ class MetricsRunHooks(RunHooks):
             )
             
         if input_tokens > 0:
-            self.metrics.record_metric(
+            metrics.record_metric(
                 metric_name="agent_token_usage",
                 value=input_tokens,
                 dimensions={
@@ -468,7 +494,7 @@ class MetricsRunHooks(RunHooks):
             )
             
         if output_tokens > 0:
-            self.metrics.record_metric(
+            metrics.record_metric(
                 metric_name="agent_token_usage",
                 value=output_tokens,
                 dimensions={
@@ -480,7 +506,7 @@ class MetricsRunHooks(RunHooks):
             )
         
         # Record agent completion in run event
-        self.metrics.record_event(
+        metrics.record_event(
             event_type="run_agent_end",
             resource_id=agent_run_id,
             metadata={
@@ -497,7 +523,7 @@ class MetricsRunHooks(RunHooks):
         )
         
         # Record agent in run duration metric
-        self.metrics.record_metric(
+        metrics.record_metric(
             metric_name="run_agent_duration",
             value=duration,
             dimensions={
@@ -515,17 +541,24 @@ class MetricsRunHooks(RunHooks):
             agent: The agent executing the tool
             tool: The tool being executed
         """
+        metrics = context.context.metrics
+        
         trace = get_current_trace()
-        run_id = trace.trace_id if trace is not None else str(uuid.uuid4())
+        if trace is None:
+            logger.warning("Cannot get trace ID for tool '%s' execution by agent '%s' in workflow '%s'", 
+                          tool.name, agent.name, self.workflow_id)
+            return
+            
+        run_id = trace.trace_id
         logger.info("Run: Tool '%s' starting for agent '%s' in run '%s', workflow '%s'", 
                    tool.name, agent.name, run_id, self.workflow_id)
                    
         # Start a timer for the tool in this run
         tool_run_id = f"{run_id}:{agent.name}:{tool.name}"
-        self.metrics.start_timer("run_tool_execution", tool_run_id)
+        metrics.start_timer("run_tool_execution", tool_run_id)
         
         # Record tool start in run event
-        self.metrics.record_event(
+        metrics.record_event(
             event_type="run_tool_start",
             resource_id=tool_run_id,
             metadata={
@@ -546,8 +579,15 @@ class MetricsRunHooks(RunHooks):
             tool: The tool that was executed
             result: The result of the tool execution
         """
+        metrics = context.context.metrics
+        
         trace = get_current_trace()
-        run_id = trace.trace_id if trace is not None else str(uuid.uuid4())
+        if trace is None:
+            logger.warning("Cannot get trace ID for tool '%s' execution by agent '%s' in workflow '%s'", 
+                          tool.name, agent.name, self.workflow_id)
+            return
+            
+        run_id = trace.trace_id
         logger.info("Run: Tool '%s' completed for agent '%s' in run '%s', workflow '%s'", 
                    tool.name, agent.name, run_id, self.workflow_id)
         result_preview = result[:200] + "..." if len(result) > 200 else result
@@ -555,7 +595,7 @@ class MetricsRunHooks(RunHooks):
         
         # Stop the tool timer and record duration
         tool_run_id = f"{run_id}:{agent.name}:{tool.name}"
-        duration = self.metrics.stop_timer("run_tool_execution", tool_run_id)
+        duration = metrics.stop_timer("run_tool_execution", tool_run_id)
         
         # Get token usage for the tool if available
         # Note: Tool-specific tokens may not be directly available in usage
@@ -566,7 +606,7 @@ class MetricsRunHooks(RunHooks):
         
         # Record tool token usage metrics if available
         if tool_total_tokens > 0:
-            self.metrics.record_metric(
+            metrics.record_metric(
                 metric_name="run_tool_token_usage",
                 value=tool_total_tokens,
                 dimensions={
@@ -579,7 +619,7 @@ class MetricsRunHooks(RunHooks):
             )
             
         if tool_input_tokens > 0:
-            self.metrics.record_metric(
+            metrics.record_metric(
                 metric_name="run_tool_token_usage",
                 value=tool_input_tokens,
                 dimensions={
@@ -592,7 +632,7 @@ class MetricsRunHooks(RunHooks):
             )
             
         if tool_output_tokens > 0:
-            self.metrics.record_metric(
+            metrics.record_metric(
                 metric_name="run_tool_token_usage",
                 value=tool_output_tokens,
                 dimensions={
@@ -605,7 +645,7 @@ class MetricsRunHooks(RunHooks):
             )
         
         # Record tool completion in run event
-        self.metrics.record_event(
+        metrics.record_event(
             event_type="run_tool_end",
             resource_id=tool_run_id,
             metadata={
@@ -623,7 +663,7 @@ class MetricsRunHooks(RunHooks):
         )
         
         # Record tool in run duration metric
-        self.metrics.record_metric(
+        metrics.record_metric(
             metric_name="run_tool_duration",
             value=duration,
             dimensions={
@@ -642,14 +682,21 @@ class MetricsRunHooks(RunHooks):
             from_agent: The agent handing off control
             to_agent: The agent receiving control
         """
+        metrics = context.context.metrics
+        
         trace = get_current_trace()
-        run_id = trace.trace_id if trace is not None else str(uuid.uuid4())
+        if trace is None:
+            logger.warning("Cannot get trace ID for handoff from '%s' to '%s' in workflow '%s'", 
+                          from_agent.name, to_agent.name, self.workflow_id)
+            return
+            
+        run_id = trace.trace_id
         logger.info("Run: Handoff from agent '%s' to '%s' in run '%s', workflow '%s'", 
                    from_agent.name, to_agent.name, run_id, self.workflow_id)
                    
         # Record handoff in run event
         handoff_id = f"{run_id}:{from_agent.name}:{to_agent.name}"
-        self.metrics.record_event(
+        metrics.record_event(
             event_type="run_handoff",
             resource_id=handoff_id,
             metadata={
@@ -662,7 +709,7 @@ class MetricsRunHooks(RunHooks):
         )
         
         # Record handoff in run count metric
-        self.metrics.record_metric(
+        metrics.record_metric(
             metric_name="run_handoffs",
             value=1.0,  # Increment by 1
             dimensions={

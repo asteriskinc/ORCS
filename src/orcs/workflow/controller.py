@@ -6,7 +6,10 @@ import logging
 
 from agents.agent import Agent
 from agents.run import Runner, RunConfig
+from orcs.context import agent_context
 from orcs.context.agent_context import AgentContext
+from orcs.context.metrics_context import MetricsAgentContext
+from orcs.metrics.context import BasicMetricsContext
 from orcs.workflow.models import Workflow, Task, WorkflowStatus
 from orcs.memory.system import MemorySystem
 from orcs.agent.registry import AgentRegistry, global_registry
@@ -15,7 +18,6 @@ from orcs.agent.registry import AgentRegistry, global_registry
 from orcs.metrics import (
     MetricsAgentHooks,
     MetricsRunHooks,
-    BasicMetricsContext,
 )
 
 # Import agent factories to ensure they are registered
@@ -195,9 +197,10 @@ class WorkflowController:
             # Set up hooks for metrics collection
             logger.debug("Setting up hooks for metrics collection")
             # Create a basic metrics context for the hooks
+            agent_hooks = MetricsAgentHooks(workflow_id=workflow.id)
+            run_hooks = MetricsRunHooks(workflow_id=workflow.id)
             metrics_context = BasicMetricsContext()
-            agent_hooks = MetricsAgentHooks(metrics_context=metrics_context, workflow_id=workflow.id)
-            run_hooks = MetricsRunHooks(metrics_context=metrics_context, workflow_id=workflow.id)
+            agent_context = MetricsAgentContext(metrics_context=metrics_context, workflow_id=workflow.id, agent_id="planner")
             
             # Attach agent hooks to the planner agent
             logger.debug("Attaching hooks to planner agent")
@@ -221,7 +224,8 @@ class WorkflowController:
                 starting_agent=self.planner_agent,
                 input=query,
                 hooks=run_hooks,
-                run_config=run_config
+                run_config=run_config,
+                context=agent_context
             )
             logger.debug("Planner agent execution completed")
             

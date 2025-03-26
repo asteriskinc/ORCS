@@ -8,6 +8,7 @@ import logging
 import os
 import json
 import sys
+import argparse
 from typing import Dict, Any, List, Optional, Set
 from dotenv import load_dotenv
 from datetime import datetime
@@ -32,6 +33,78 @@ logger = logging.getLogger("agent_registry_demo")
 
 # Use gpt-4o-mini for testing
 MODEL = "gpt-4o-mini"
+
+# Function to parse command line arguments
+def parse_args():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description="ORCS Agent Registry Demo")
+    parser.add_argument(
+        "--plan-file", 
+        type=str, 
+        help="Path to the implementation plan file to use as query. If not provided, uses a default query."
+    )
+    parser.add_argument(
+        "--query", 
+        type=str, 
+        default="Create a tutorial on Python data analysis with pandas and matplotlib",
+        help="Query to use if no plan file is provided."
+    )
+    parser.add_argument(
+        "--section", 
+        type=str, 
+        default=None,
+        help="Specific section to extract from the plan file. Format: 'heading:subheading'"
+    )
+    return parser.parse_args()
+
+# Function to read implementation plan
+def read_implementation_plan(file_path, section=None):
+    """
+    Read implementation plan from file
+    
+    Args:
+        file_path: Path to the implementation plan file
+        section: Optional section to extract (format: 'heading:subheading')
+        
+    Returns:
+        String content of the implementation plan or specified section
+    """
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+            
+        if section:
+            # Basic section extraction (can be improved with more sophisticated Markdown parsing)
+            parts = section.split(':')
+            if len(parts) == 1:
+                # Extract section with single heading
+                heading = f"# {parts[0]}"
+                sections = content.split('# ')
+                for s in sections:
+                    if s.startswith(parts[0]) or s.startswith(parts[0] + '\n'):
+                        return s.strip()
+            elif len(parts) == 2:
+                # Extract subsection
+                heading = f"## {parts[1]}"
+                main_heading = f"# {parts[0]}"
+                
+                # First find the main section
+                main_sections = content.split('# ')
+                for main_s in main_sections:
+                    if main_s.startswith(parts[0]) or main_s.startswith(parts[0] + '\n'):
+                        # Then find the subsection
+                        subsections = main_s.split('## ')
+                        for sub_s in subsections:
+                            if sub_s.startswith(parts[1]) or sub_s.startswith(parts[1] + '\n'):
+                                return sub_s.strip()
+            
+            logger.warning(f"Section '{section}' not found in the plan file. Using entire file.")
+            return content
+        else:
+            return content
+    except Exception as e:
+        logger.error(f"Error reading implementation plan: {str(e)}")
+        return None
 
 
 def detect_cycle(tasks: Dict[str, Task], start_id: str, visited: Optional[Set[str]] = None, path: Optional[List[str]] = None) -> List[str]:
@@ -145,6 +218,9 @@ async def main():
     """Run the agent registry demo"""
     logger.info("Starting ORCS Agent Registry Demo")
     
+    # Parse command line arguments
+    args = parse_args()
+    
     # Display available agent types
     agent_types = global_registry.list_agent_types()
     logger.info(f"Available agent types: {', '.join(agent_types)}")
@@ -168,13 +244,23 @@ async def main():
         agent_registry=global_registry
     )
     
-    # Sample query for creating a workflow
-    query = "Create a tutorial on Python data analysis with pandas and matplotlib"
+    # Determine the query to use
+    query = args.query
+    if args.plan_file:
+        plan_content = read_implementation_plan(args.plan_file, args.section)
+        if plan_content:
+            logger.info(f"Using implementation plan as query: {args.plan_file}")
+            if args.section:
+                logger.info(f"Extracted section: {args.section}")
+            query = plan_content
+            logger.info(f"Plan content length: {len(query)} characters")
+        else:
+            logger.warning(f"Failed to read implementation plan. Using default query: {query}")
     
     # Create the workflow
     try:
         # Create workflow and generate tasks
-        logger.info(f"Creating workflow for query: '{query}'")
+        logger.info(f"Creating workflow for query based on {'implementation plan' if args.plan_file else 'default query'}")
         workflow_id = await controller.create_workflow(query)
         
         # Get the workflow - Need to await this since it's an async method

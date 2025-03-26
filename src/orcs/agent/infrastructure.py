@@ -401,6 +401,5 @@ def create_planner_agent(model: str = "gpt-4o-mini", config_provider=None, agent
         instructions=planner_instructions,
         model=model,
         model_settings=model_settings,
-        tools=[get_memory_context],
         output_type=PlanResult
     ) 
